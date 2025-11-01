@@ -216,7 +216,7 @@ router.get(
 
     // 사용자 정보 조회
     const [users] = await pool.execute(
-      "SELECT id, email, name, region, school, major, birth_date, job_field, skills, github_url, figma_url, created_at, updated_at FROM users WHERE id = ?",
+      "SELECT id, email, name, region, school, major, birth_date, job_field, skills, github_url, figma_url, available_time, created_at, updated_at FROM users WHERE id = ?",
       [userId]
     );
 
@@ -329,15 +329,16 @@ router.put(
       skills,
       github_url,
       figma_url,
+      available_time,
     } = req.body;
 
     if (!userId) {
       throw createError("인증이 필요합니다", 401);
     }
 
-    // 사용자 존재 확인
+    // 사용자 존재 확인 및 기존 정보 조회
     const [existingUsers] = await pool.execute(
-      "SELECT id FROM users WHERE id = ?",
+      "SELECT id, name, region, school, major, birth_date, job_field, skills, github_url, figma_url, available_time FROM users WHERE id = ?",
       [userId]
     );
 
@@ -345,28 +346,33 @@ router.put(
       throw createError("사용자를 찾을 수 없습니다", 404);
     }
 
-    // 사용자 정보 업데이트
+    const existingUser = existingUsers[0] as any;
+
+    // 사용자 정보 업데이트 (전달된 값이 있으면 사용, 없으면 기존 값 유지)
     await pool.execute(
       `UPDATE users 
-       SET name = ?, region = ?, school = ?, major = ?, birth_date = ?, job_field = ?, skills = ?, github_url = ?, figma_url = ?, updated_at = CURRENT_TIMESTAMP 
+       SET name = ?, region = ?, school = ?, major = ?, birth_date = ?, job_field = ?, skills = ?, github_url = ?, figma_url = ?, available_time = ?, updated_at = CURRENT_TIMESTAMP 
        WHERE id = ?`,
       [
-        name || null,
-        region || null,
-        school || null,
-        major || null,
-        birth_date || null,
-        job_field || null,
-        skills || null,
-        github_url || null,
-        figma_url || null,
+        name !== undefined ? name || null : existingUser.name,
+        region !== undefined ? region || null : existingUser.region,
+        school !== undefined ? school || null : existingUser.school,
+        major !== undefined ? major || null : existingUser.major,
+        birth_date !== undefined ? birth_date || null : existingUser.birth_date,
+        job_field !== undefined ? job_field || null : existingUser.job_field,
+        skills !== undefined ? skills || null : existingUser.skills,
+        github_url !== undefined ? github_url || null : existingUser.github_url,
+        figma_url !== undefined ? figma_url || null : existingUser.figma_url,
+        available_time !== undefined
+          ? available_time || null
+          : existingUser.available_time,
         userId,
       ]
     );
 
     // 업데이트된 사용자 정보 조회
     const [users] = await pool.execute(
-      "SELECT id, email, name, region, school, major, birth_date, job_field, skills, github_url, figma_url, created_at, updated_at FROM users WHERE id = ?",
+      "SELECT id, email, name, region, school, major, birth_date, job_field, skills, github_url, figma_url, available_time, created_at, updated_at FROM users WHERE id = ?",
       [userId]
     );
 

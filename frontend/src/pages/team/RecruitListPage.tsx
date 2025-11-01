@@ -29,6 +29,18 @@ type Team = {
   favoriteId?: string;
 };
 
+const getDDay = (deadline?: string | null): string => {
+  if (!deadline) return "D-?";
+  const now = new Date();
+  const end = new Date(deadline);
+  const diff = Math.ceil(
+    (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (diff > 0) return `D-${diff}`;
+  if (diff === 0) return "D-Day";
+  return `D+${Math.abs(diff)}`;
+};
+
 const RecruitCard = ({
   t,
   onToggleFavorite,
@@ -54,8 +66,11 @@ const RecruitCard = ({
     onToggleFavorite(t.id, t.isFavorited || false, t.favoriteId);
   };
 
+  const current = t.current_members || 0;
+  const max = t.max_members || 6;
+  const isTight = max - current <= 2; // 마감 임박 정원 강조
   return (
-    <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300">
+    <div className="relative rounded-2xl surface p-5 hover:border-blue-300">
       <Link to={`/team/${t.id}`} className="block">
         <div className="flex items-start gap-4">
           {t.image_url ? (
@@ -83,17 +98,20 @@ const RecruitCard = ({
         </div>
 
         <div className="mt-6 flex items-center justify-between text-sm">
-          <div className="text-slate-700">
-            정원{" "}
-            <span className="font-semibold">
-              {t.current_members || 0}/{t.max_members || 6}
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border ${
+                isTight
+                  ? "bg-orange-50 text-orange-700 border-orange-200"
+                  : "bg-slate-50 text-slate-700 border-slate-200"
+              }`}
+            >
+              정원 {current}/{max}
             </span>
           </div>
-          <div className="text-slate-700">
-            {t.deadline
-              ? `마감 ${new Date(t.deadline).toLocaleDateString()}`
-              : "마감 D-18"}
-          </div>
+          <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 border border-blue-200">
+            {getDDay(t.deadline)}
+          </span>
         </div>
 
         {/* 저장 버튼 - 카드 하단에 배치 */}
@@ -101,10 +119,8 @@ const RecruitCard = ({
           <div className="mt-4 flex justify-end">
             <button
               onClick={handleFavoriteClick}
-              className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                t.isFavorited
-                  ? "bg-black text-white hover:bg-gray-800"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
+              className={`btn btn-animate text-sm ${
+                t.isFavorited ? "btn-primary" : "btn-outline"
               }`}
               aria-label={t.isFavorited ? "저장 취소" : "저장"}
             >
@@ -126,8 +142,12 @@ const RecruitListPage = () => {
     recruitmentStatus: "",
     deadlineStatus: "",
     traits: [],
+    keyword: "",
+    regions: [],
+    subregions: [],
   });
   const { user, token } = useAuth();
+  const [showSearch, setShowSearch] = useState(false);
 
   const buildQueryString = useCallback((currentFilters: TeamFilterOptions) => {
     const params = new URLSearchParams();
@@ -194,7 +214,48 @@ const RecruitListPage = () => {
         }
       }
 
-      setTeams(teamsWithFavorites);
+      // 클라이언트 추가 필터링: 키워드, 다중 지역, 시/군/구
+      const keyword = (filters.keyword || "").trim().toLowerCase();
+      const regions = new Set(filters.regions || []);
+      const subregions = new Set(filters.subregions || []);
+
+      const filtered = teamsWithFavorites.filter((t) => {
+        // 키워드 매칭: 이름/프로젝트/설명/모집포지션/이상적인 후보 등
+        if (keyword) {
+          const hay = [
+            t.name,
+            t.project_title,
+            t.description,
+            t.purpose,
+            t.seeking_members,
+            t.ideal_candidate,
+            t.collaboration_style,
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .toLowerCase();
+          if (!hay.includes(keyword)) return false;
+        }
+
+        // 다중 지역
+        if (regions.size > 0) {
+          const regionMatch = t.region && regions.has(t.region);
+          if (!regionMatch) return false;
+        }
+
+        // 시/군/구 텍스트 매칭(백엔드 필드 규격화 전 가벼운 포함 체크)
+        if (subregions.size > 0) {
+          const text = `${t.region ?? ""} ${t.description ?? ""}`;
+          const matched = Array.from(subregions).some((sgg) =>
+            text.includes(sgg)
+          );
+          if (!matched) return false;
+        }
+
+        return true;
+      });
+
+      setTeams(filtered);
     } catch (error) {
       console.error("팀 목록을 불러오는데 실패했습니다:", error);
       setTeams([]);
@@ -257,6 +318,57 @@ const RecruitListPage = () => {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
       <Container className="py-10">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">팀 모집 공고</h1>
+          <button
+            className="btn btn-animate btn-ghost text-sm border border-slate-300"
+            onClick={() => setShowSearch((v) => !v)}
+            aria-expanded={showSearch}
+            aria-controls="page-search"
+          >
+            <svg
+              className="w-5 h-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.75 3.75a7.5 7.5 0 0012.9 12.9z"
+              />
+            </svg>
+            검색
+          </button>
+        </div>
+
+        {showSearch && (
+          <div id="page-search" className="mb-8">
+            <div className="glass p-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={filters.keyword || ""}
+                  onChange={(e) =>
+                    setFilters((f) => ({ ...f, keyword: e.target.value }))
+                  }
+                  placeholder="팀 이름, 공고 제목, 포지션, 소개글"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                />
+                {filters.keyword && (
+                  <button
+                    className="btn btn-animate btn-outline text-sm"
+                    onClick={() => setFilters((f) => ({ ...f, keyword: "" }))}
+                  >
+                    키워드 지우기
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col xl:flex-row gap-8">
           {/* 왼쪽 사이드바 - 필터링 */}
           <div className="w-full xl:w-96 flex-shrink-0">
@@ -269,18 +381,33 @@ const RecruitListPage = () => {
           {/* 오른쪽 메인 콘텐츠 */}
           <div className="flex-1 min-w-0">
             <div className="mb-6">
-              <h1 className="text-2xl font-bold mb-4">팀 모집 공고</h1>
-
               {/* 필터링 결과 정보 */}
               {(filters.region ||
                 filters.area ||
                 filters.teamSize ||
                 filters.recruitmentStatus ||
-                filters.deadlineStatus) && (
-                <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4">
+                filters.deadlineStatus ||
+                (filters.keyword && filters.keyword.trim() !== "") ||
+                (filters.regions && filters.regions.length > 0) ||
+                (filters.subregions && filters.subregions.length > 0)) && (
+                <div className="surface p-4 mb-4">
                   <div className="text-sm text-slate-600">
                     <span className="font-medium">적용된 필터:</span>
                     <div className="mt-2 flex flex-wrap gap-2">
+                      {filters.keyword && filters.keyword.trim() !== "" && (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200">
+                          🔎 {filters.keyword}
+                          <button
+                            type="button"
+                            className="ml-2 text-slate-500 hover:text-slate-700"
+                            onClick={() =>
+                              setFilters((f) => ({ ...f, keyword: "" }))
+                            }
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
                       {filters.region && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
                           📍 {filters.region}
@@ -306,6 +433,52 @@ const RecruitListPage = () => {
                           ⏰ {filters.deadlineStatus}
                         </span>
                       )}
+                      {filters.regions &&
+                        filters.regions.map((r) => (
+                          <span
+                            key={r}
+                            className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 border border-blue-200"
+                          >
+                            {r}
+                            <button
+                              type="button"
+                              className="ml-2 text-blue-600 hover:text-blue-800"
+                              onClick={() =>
+                                setFilters((f) => ({
+                                  ...f,
+                                  regions: (f.regions || []).filter(
+                                    (x) => x !== r
+                                  ),
+                                }))
+                              }
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      {filters.subregions &&
+                        filters.subregions.map((sgg) => (
+                          <span
+                            key={sgg}
+                            className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 border border-indigo-200"
+                          >
+                            {sgg}
+                            <button
+                              type="button"
+                              className="ml-2 text-indigo-600 hover:text-indigo-800"
+                              onClick={() =>
+                                setFilters((f) => ({
+                                  ...f,
+                                  subregions: (f.subregions || []).filter(
+                                    (x) => x !== sgg
+                                  ),
+                                }))
+                              }
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
                     </div>
                   </div>
                 </div>
@@ -313,15 +486,17 @@ const RecruitListPage = () => {
             </div>
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {teams?.map((t) => (
-                <RecruitCard
-                  key={t.id}
-                  t={t}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-              )) || (
+              {teams && teams.length > 0 ? (
+                teams.map((t) => (
+                  <RecruitCard
+                    key={t.id}
+                    t={t}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                ))
+              ) : (
                 <div className="col-span-full text-center text-slate-500">
-                  팀 모집 공고를 불러오는 중...
+                  조건에 부합하는 팀을 찾지 못했습니다
                 </div>
               )}
             </div>

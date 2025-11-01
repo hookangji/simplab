@@ -12,11 +12,78 @@ type Contest = {
   image_url?: string | null;
 };
 
+const getDDay = (deadline?: string | null): string => {
+  if (!deadline) return "마감 미정";
+
+  try {
+    // YYYY-MM-DD 형식의 날짜 문자열을 직접 파싱
+    const dateParts = deadline.split("-");
+    if (dateParts.length !== 3) {
+      console.error("날짜 형식 오류:", deadline);
+      return "마감 미정";
+    }
+
+    const year = parseInt(dateParts[0], 10);
+    const month = parseInt(dateParts[1], 10);
+    const day = parseInt(dateParts[2], 10);
+
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      console.error("날짜 파싱 오류:", deadline, { year, month, day });
+      return "마감 미정";
+    }
+
+    const today = new Date();
+    // 오늘 날짜를 자정으로 설정
+    const todayStart = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    // 마감일을 자정으로 설정
+    const deadlineStart = new Date(year, month - 1, day);
+
+    // 유효한 날짜인지 확인
+    if (isNaN(deadlineStart.getTime())) {
+      console.error("유효하지 않은 날짜:", deadline);
+      return "마감 미정";
+    }
+
+    // 날짜 차이 계산 (밀리초)
+    const diffTime = deadlineStart.getTime() - todayStart.getTime();
+    // 일수로 변환
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    // 디버깅 로그 (개발 환경에서만)
+    if (process.env.NODE_ENV === "development") {
+      console.log("날짜 계산:", {
+        deadline,
+        deadlineDate: deadlineStart.toISOString().split("T")[0],
+        todayDate: todayStart.toISOString().split("T")[0],
+        diffDays,
+      });
+    }
+
+    if (diffDays < 0) {
+      // 마감됨
+      return "마감됨";
+    } else if (diffDays === 0) {
+      // 오늘이 마감일
+      return "D-Day";
+    } else {
+      // 남은 일수
+      return `D-${diffDays}`;
+    }
+  } catch (error) {
+    console.error("날짜 계산 오류:", error, deadline);
+    return "마감 미정";
+  }
+};
+
 const ContestCard = ({ c }: { c: Contest }) => {
   return (
     <Link
       to={`/contests/${c.id}`}
-      className="card-hover group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg hover:border-blue-300 hover:shadow-xl"
+      className="card-hover group overflow-hidden rounded-3xl surface hover:border-blue-300 hover:shadow-xl"
     >
       <div className="relative">
         <div className="aspect-[3/4] w-full bg-white flex items-center justify-center p-2">
@@ -49,10 +116,24 @@ const ContestCard = ({ c }: { c: Contest }) => {
         </div>
 
         <div className="mt-6 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-700">
-            {c.deadline
-              ? `마감 ${new Date(c.deadline).toLocaleDateString()}`
-              : "마감 미정"}
+          <div className="flex items-center gap-2">
+            {(() => {
+              const dDayText = getDDay(c.deadline);
+              const isOverdue = dDayText === "마감됨";
+              const isUrgent = dDayText === "D-Day";
+              const className = isOverdue
+                ? "bg-red-50 text-red-700 border-red-200"
+                : isUrgent
+                ? "bg-orange-50 text-orange-700 border-orange-200"
+                : "bg-blue-50 text-blue-700 border-blue-200";
+              return (
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border ${className}`}
+                >
+                  {dDayText}
+                </span>
+              );
+            })()}
           </div>
           <div className="text-xs text-slate-500">자세히 보기 →</div>
         </div>
@@ -66,7 +147,18 @@ const ContestList = () => {
 
   useEffect(() => {
     apiGet<{ success: boolean; data: { contests: Contest[] } }>("/api/contests")
-      .then((d) => setContests(d.data.contests))
+      .then((d) => {
+        const contests = d.data.contests.map((contest: Contest) => ({
+          ...contest,
+          // deadline이 Date 객체인 경우 문자열로 변환
+          deadline: contest.deadline
+            ? typeof contest.deadline === "string"
+              ? contest.deadline
+              : new Date(contest.deadline as any).toISOString().split("T")[0]
+            : null,
+        }));
+        setContests(contests);
+      })
       .catch((error) => {
         console.error("공모전 목록을 불러오는데 실패했습니다:", error);
         setContests([]);
@@ -94,7 +186,7 @@ const ContestList = () => {
         <div className="text-center mt-12">
           <Link
             to="/contests"
-            className="btn-animate inline-flex items-center gap-2 rounded-xl border-2 border-purple-300 bg-white px-8 py-4 text-lg font-semibold text-purple-700 shadow-lg hover:border-purple-400 hover:bg-purple-50 hover:shadow-xl focus-ring"
+            className="btn btn-animate btn-outline inline-flex items-center gap-2 text-lg"
           >
             모든 공모전 보기
             <svg

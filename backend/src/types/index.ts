@@ -70,6 +70,7 @@ export interface Team {
   current_team_composition?: string;
   ideal_candidate?: string;
   collaboration_style?: string;
+  collaboration_tools?: string;
   max_members: number;
   current_members: number;
   deadline?: string;
@@ -89,6 +90,7 @@ export interface CreateTeamData {
   current_team_composition?: string;
   ideal_candidate?: string;
   collaboration_style?: string;
+  collaboration_tools?: string;
   max_members?: number;
   deadline?: string;
   project_title?: string;

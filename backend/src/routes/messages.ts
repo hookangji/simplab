@@ -2,12 +2,14 @@ import { Router, Request, Response } from "express";
 import { pool } from "../config/database";
 import { asyncHandler, createError } from "../middleware/error";
 import { validatePagination } from "../utils/validation";
+import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
 
 // 메시지 목록 조회 (직접 메시지)
 router.get(
   "/direct",
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user?.userId;
     const { page = "1", limit = "20" } = req.query;
@@ -22,45 +24,96 @@ router.get(
       offset,
     } = validatePagination(page as string, limit as string);
 
-    // 직접 메시지 대화 목록 조회 (간단한 버전)
-    const [conversations] = await pool.execute(
+    // 직접 메시지 대화 목록 조회 (최신 메시지 및 안읽음 카운트 포함)
+    // 먼저 대화 상대 목록을 가져옴
+    const [conversationsRaw] = await pool.execute(
       `SELECT DISTINCT
         CASE 
           WHEN m.sender_id = ? THEN m.receiver_id 
           ELSE m.sender_id 
-        END as other_user_id,
-        CASE 
-          WHEN m.sender_id = ? THEN r.name 
-          ELSE s.name 
-        END as other_user_name,
-        CASE 
-          WHEN m.sender_id = ? THEN r.email 
-          ELSE s.email 
-        END as other_user_email,
-        m.content as last_message,
-        m.created_at as last_message_at,
-        m.is_read as last_message_read,
-        0 as unread_count
+        END as other_user_id
       FROM messages m
-      JOIN users s ON m.sender_id = s.id
-      JOIN users r ON m.receiver_id = r.id
       WHERE (m.sender_id = ? OR m.receiver_id = ?) 
-        AND m.message_type = 'direct'
-      ORDER BY m.created_at DESC`,
-      [userId, userId, userId, userId, userId]
+        AND m.message_type = 'direct'`,
+      [userId, userId, userId]
     );
 
-    // 중복 제거 (같은 사용자와의 최신 대화만 유지)
-    const conversationMap = new Map();
-    if (Array.isArray(conversations)) {
-      conversations.forEach((conv: any) => {
-        if (!conversationMap.has(conv.other_user_id)) {
-          conversationMap.set(conv.other_user_id, conv);
-        }
+    const conversationList = [];
+    if (Array.isArray(conversationsRaw)) {
+      const seenUserIds = new Set();
+
+      for (const row of conversationsRaw) {
+        const otherUserId = (row as any).other_user_id;
+
+        // 중복 제거
+        if (seenUserIds.has(otherUserId)) continue;
+        seenUserIds.add(otherUserId);
+
+        // 사용자 정보 조회
+        const [userRows] = await pool.execute(
+          `SELECT id, name, email FROM users WHERE id = ?`,
+          [otherUserId]
+        );
+
+        const otherUser =
+          Array.isArray(userRows) && userRows.length > 0
+            ? (userRows[0] as any)
+            : null;
+
+        if (!otherUser) continue;
+
+        // 최신 메시지 조회
+        const [latestMessages] = await pool.execute(
+          `SELECT m.content, m.created_at, m.is_read
+           FROM messages m
+           WHERE ((m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?))
+             AND m.message_type = 'direct'
+           ORDER BY m.created_at DESC
+           LIMIT 1`,
+          [userId, otherUserId, otherUserId, userId]
+        );
+
+        const latest =
+          Array.isArray(latestMessages) && latestMessages.length > 0
+            ? (latestMessages[0] as any)
+            : null;
+
+        // 안읽음 카운트 조회
+        const [unreadCount] = await pool.execute(
+          `SELECT COUNT(*) as count
+           FROM messages m
+           WHERE m.receiver_id = ?
+             AND m.sender_id = ?
+             AND m.message_type = 'direct'
+             AND (m.is_read IS NULL OR m.is_read = FALSE)`,
+          [userId, otherUserId]
+        );
+
+        const unread =
+          Array.isArray(unreadCount) && unreadCount.length > 0
+            ? (unreadCount[0] as any).count
+            : 0;
+
+        conversationList.push({
+          other_user_id: otherUserId,
+          other_user_name: otherUser.name,
+          other_user_email: otherUser.email,
+          last_message: latest?.content || "",
+          last_message_at: latest?.created_at || new Date().toISOString(),
+          last_message_read: latest?.is_read || false,
+          unread_count: unread,
+        });
+      }
+
+      // 최신 메시지 시간순 정렬
+      conversationList.sort((a, b) => {
+        const timeA = new Date(a.last_message_at).getTime();
+        const timeB = new Date(b.last_message_at).getTime();
+        return timeB - timeA;
       });
     }
 
-    const uniqueConversations = Array.from(conversationMap.values());
+    const uniqueConversations = conversationList;
 
     res.json({
       success: true,
@@ -76,6 +129,7 @@ router.get(
 // 특정 사용자와의 메시지 조회
 router.get(
   "/direct/:userId",
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const currentUserId = req.user?.userId;
     const { userId: otherUserId } = req.params;
@@ -136,6 +190,7 @@ router.get(
 // 직접 메시지 전송
 router.post(
   "/direct",
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const senderId = req.user?.userId;
     const { receiver_id, content } = req.body;
@@ -194,6 +249,7 @@ router.post(
 // 팀 메시지 목록 조회
 router.get(
   "/team/:teamId",
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user?.userId;
     const { teamId } = req.params;
@@ -245,6 +301,7 @@ router.get(
 // 팀 메시지 전송
 router.post(
   "/team/:teamId",
+  authenticateToken,
   asyncHandler(async (req: Request, res: Response) => {
     const senderId = req.user?.userId;
     const { teamId } = req.params;

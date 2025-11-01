@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 
 import { config } from "./config/env";
 import { testConnection } from "./config/database";
-import { authenticateToken } from "./middleware/auth";
+import { authenticateToken, optionalAuth } from "./middleware/auth";
 import { errorHandler, notFoundHandler } from "./middleware/error";
 
 // 라우터 import
@@ -75,7 +75,7 @@ app.get("/api/test", async (req, res) => {
 
 // API 라우터
 app.use("/api/auth", authRoutes);
-app.use("/api/contests", contestRoutes);
+app.use("/api/contests", optionalAuth, contestRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/favorites", authenticateToken, favoriteRoutes);
 app.use("/api/messages", authenticateToken, messageRoutes);

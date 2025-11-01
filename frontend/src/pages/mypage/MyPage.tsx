@@ -7,6 +7,9 @@ import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiDelete, apiPost, apiPut } from "../../shared/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import TeamRegistrationManageContent from "./TeamRegistrationManageContent";
+import RecruitmentPostManageContent from "./RecruitmentPostManageContent";
+import RecruitmentPostCreateForm from "./RecruitmentPostCreateForm";
 
 const SideLink = ({ to, label }: { to: string; label: string }) => {
   const { pathname } = useLocation();
@@ -94,36 +97,120 @@ const FavoriteContestCard = ({
 }: {
   contest: FavoriteContest;
   onRemove: (id: string) => void;
-}) => (
-  <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex items-start justify-between">
-      <div className="flex-1">
+}) => {
+  const getDaysUntilDeadline = (deadline: string | null): number | null => {
+    if (!deadline) return null;
+
+    try {
+      // YYYY-MM-DD 형식의 날짜 문자열을 직접 파싱
+      const [year, month, day] = deadline.split("-").map(Number);
+      if (
+        !year ||
+        !month ||
+        !day ||
+        isNaN(year) ||
+        isNaN(month) ||
+        isNaN(day)
+      ) {
+        return null;
+      }
+
+      const today = new Date();
+
+      // 오늘 날짜를 자정으로 설정
+      const todayStart = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      // 마감일을 자정으로 설정
+      const deadlineStart = new Date(year, month - 1, day);
+
+      // 유효한 날짜인지 확인
+      if (isNaN(deadlineStart.getTime())) {
+        return null;
+      }
+
+      const diffTime = deadlineStart.getTime() - todayStart.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    } catch (error) {
+      console.error("날짜 계산 오류:", error, deadline);
+      return null;
+    }
+  };
+
+  const daysUntilDeadline = getDaysUntilDeadline(contest.deadline);
+  const isUrgent =
+    daysUntilDeadline !== null &&
+    daysUntilDeadline <= 7 &&
+    daysUntilDeadline >= 0;
+  const isOverdue = daysUntilDeadline !== null && daysUntilDeadline < 0;
+
+  return (
+    <div className="group relative rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
+      <div className="flex items-start justify-between">
         <Link
           to={`/contests/${contest.contest_id}`}
-          className="text-sm font-semibold text-slate-900 hover:text-slate-700"
+          className="flex-1 cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
         >
-          {contest.title}
+          <div className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+            {contest.title}
+          </div>
+          <div className="mt-1 text-xs text-slate-600">
+            {contest.topic} · {contest.region}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            주최: {contest.host}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {contest.deadline ? (
+              <>
+                <span
+                  className={`text-xs font-medium ${
+                    isOverdue
+                      ? "text-red-600"
+                      : isUrgent
+                      ? "text-orange-600"
+                      : "text-slate-500"
+                  }`}
+                >
+                  마감: {new Date(contest.deadline).toLocaleDateString()}
+                </span>
+                {isUrgent && !isOverdue && (
+                  <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
+                    마감 임박 ({daysUntilDeadline}일 남음)
+                  </span>
+                )}
+                {isOverdue && (
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                    마감됨
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-xs text-slate-500">마감: 미정</span>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+            자세히 보기 →
+          </div>
         </Link>
-        <div className="mt-1 text-xs text-slate-600">
-          {contest.topic} · {contest.region}
-        </div>
-        <div className="mt-1 text-xs text-slate-500">주최: {contest.host}</div>
-        <div className="mt-1 text-xs text-slate-500">
-          마감:{" "}
-          {contest.deadline
-            ? new Date(contest.deadline).toLocaleDateString()
-            : "미정"}
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(contest.id);
+          }}
+          className="ml-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+          title="관심 제거"
+        >
+          ×
+        </button>
       </div>
-      <button
-        onClick={() => onRemove(contest.id)}
-        className="ml-2 text-xs text-slate-400 hover:text-red-500"
-      >
-        ×
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const FavoriteTeamCard = ({
   team,
@@ -132,15 +219,16 @@ const FavoriteTeamCard = ({
   team: FavoriteTeam;
   onRemove: (id: string) => void;
 }) => (
-  <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+  <div className="group relative rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
     <div className="flex items-start justify-between">
-      <div className="flex-1">
-        <Link
-          to={`/team/${team.team_id}`}
-          className="text-sm font-semibold text-slate-900 hover:text-slate-700"
-        >
+      <Link
+        to={`/team/${team.team_id}`}
+        className="flex-1 cursor-pointer"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
           {team.name}
-        </Link>
+        </div>
         <div className="mt-1 text-xs text-slate-600">{team.project_title}</div>
         <div className="mt-1 text-xs text-slate-500">
           {team.area} · {team.region}
@@ -148,10 +236,17 @@ const FavoriteTeamCard = ({
         <div className="mt-1 text-xs text-slate-500">
           정원: {team.current_members}/{team.max_members}명
         </div>
-      </div>
+        <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+          자세히 보기 →
+        </div>
+      </Link>
       <button
-        onClick={() => onRemove(team.id)}
-        className="ml-2 text-xs text-slate-400 hover:text-red-500"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(team.id);
+        }}
+        className="ml-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+        title="관심 제거"
       >
         ×
       </button>
@@ -727,9 +822,9 @@ const FavoritesContent = () => {
     <div className="flex-1">
       <div className="rounded-xl bg-slate-100 p-6">
         <div>
-          <div className="text-sm font-semibold">관심 팀</div>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">관심 팀</h2>
           {teams.length > 0 ? (
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {teams.map((team) => (
                 <FavoriteTeamCard
                   key={team.id}
@@ -739,16 +834,18 @@ const FavoritesContent = () => {
               ))}
             </div>
           ) : (
-            <div className="mt-3 text-center text-sm text-slate-500">
+            <div className="text-center py-8 text-sm text-slate-500">
               관심 팀이 없습니다.
             </div>
           )}
         </div>
 
         <div className="mt-8">
-          <div className="text-sm font-semibold">관심 공모전/대회</div>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">
+            관심 공모전/대회
+          </h2>
           {contests.length > 0 ? (
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {contests.map((contest) => (
                 <FavoriteContestCard
                   key={contest.id}
@@ -758,7 +855,7 @@ const FavoritesContent = () => {
               ))}
             </div>
           ) : (
-            <div className="mt-3 text-center text-sm text-slate-500">
+            <div className="text-center py-8 text-sm text-slate-500">
               관심 공모전이 없습니다.
             </div>
           )}
@@ -775,10 +872,41 @@ const AccountContent = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [skills, setSkills] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState<string>("");
+  const [jobFieldInput, setJobFieldInput] = useState<string>("");
+  const [isJobFieldCustom, setIsJobFieldCustom] = useState(false);
   const [toast, setToast] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
+
+  // 직군 선택지
+  const jobFieldOptions = [
+    "기획자",
+    "디자이너",
+    "프론트엔드",
+    "백엔드",
+    "풀스택",
+    "데이터",
+    "마케팅",
+    "영상/콘텐츠",
+  ];
+
+  // 스킬 선택지 (일반적인 스킬들)
+  const skillOptions = [
+    "Python",
+    "JavaScript",
+    "TypeScript",
+    "Java",
+    "React",
+    "Vue",
+    "Node.js",
+    "Figma",
+    "발표 능력",
+    "프로젝트 관리",
+    "디자인",
+    "마케팅",
+    "데이터 분석",
+  ];
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -840,6 +968,10 @@ const AccountContent = () => {
         }
       }
 
+      const userJobField = user.job_field || "";
+      const isCustomJobField =
+        userJobField && !jobFieldOptions.includes(userJobField);
+
       setFormData({
         name: user.name || "",
         email: user.email || "",
@@ -849,14 +981,24 @@ const AccountContent = () => {
         status: "재학중", // 별도 필드가 없으므로 기본값
         major: user.major || "",
         birth_date: formattedBirthDate,
-        job_field: user.job_field || "개발자",
+        job_field: userJobField || "",
         github_url: user.github_url || "",
         figma_url: user.figma_url || "",
       });
 
+      // 직군 커스텀 모드 설정
+      setIsJobFieldCustom(isCustomJobField);
+      if (isCustomJobField) {
+        setJobFieldInput(userJobField);
+      }
+
       // 스킬 설정
       if (user.skills) {
-        setSkills(user.skills.split(",").map((skill: string) => skill.trim()));
+        const skillList = user.skills
+          .split(",")
+          .map((skill: string) => skill.trim())
+          .filter((skill: string) => skill.length > 0);
+        setSkills(skillList);
       }
     } catch (error) {
       console.error("사용자 정보 조회 실패:", error);
@@ -878,11 +1020,53 @@ const AccountContent = () => {
       ...prev,
       [name]: value,
     }));
+
+    // 직군이 선택지에 있으면 커스텀 모드 해제
+    if (name === "job_field") {
+      if (jobFieldOptions.includes(value)) {
+        setIsJobFieldCustom(false);
+      } else {
+        setIsJobFieldCustom(true);
+        setJobFieldInput(value);
+      }
+    }
+  };
+
+  const handleJobFieldSelect = (value: string) => {
+    if (value === "직접 입력") {
+      setIsJobFieldCustom(true);
+      setJobFieldInput(formData.job_field);
+    } else {
+      setIsJobFieldCustom(false);
+      setFormData((prev) => ({
+        ...prev,
+        job_field: value,
+      }));
+    }
+  };
+
+  const handleJobFieldInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const value = e.target.value;
+    setJobFieldInput(value);
+    setFormData((prev) => ({
+      ...prev,
+      job_field: value,
+    }));
   };
 
   const handleAddSkill = () => {
-    if (newSkill.trim() && !skills.includes(newSkill.trim())) {
-      setSkills([...skills, newSkill.trim()]);
+    const trimmedSkill = newSkill.trim();
+    if (trimmedSkill && !skills.includes(trimmedSkill)) {
+      setSkills([...skills, trimmedSkill]);
+      setNewSkill("");
+    }
+  };
+
+  const handleSkillSelect = (skill: string) => {
+    if (!skills.includes(skill)) {
+      setSkills([...skills, skill]);
       setNewSkill("");
     }
   };
@@ -898,11 +1082,49 @@ const AccountContent = () => {
     }
   };
 
+  // 필수 항목 검증
+  const validateRequiredFields = (): boolean => {
+    const requiredFields = {
+      name: formData.name.trim(),
+      region: formData.region.trim(),
+      school: formData.school.trim(),
+      status: formData.status,
+      birth_date: formData.birth_date,
+      job_field: formData.job_field.trim(),
+    };
+
+    const missingFields: string[] = [];
+
+    if (!requiredFields.name) missingFields.push("이름");
+    if (!requiredFields.region) missingFields.push("지역 (시/도)");
+    if (!requiredFields.school) missingFields.push("학교명");
+    if (!requiredFields.status) missingFields.push("상태");
+    if (!requiredFields.birth_date) missingFields.push("생년월일");
+    if (!requiredFields.job_field) missingFields.push("직군");
+    if (skills.length === 0) missingFields.push("스킬");
+
+    if (missingFields.length > 0) {
+      setToast({
+        type: "error",
+        message: `필수 항목을 입력해 주세요: ${missingFields.join(", ")}`,
+      });
+      setTimeout(() => setToast(null), 3000);
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!token) {
       alert("로그인이 필요합니다.");
+      return;
+    }
+
+    // 필수 항목 검증
+    if (!validateRequiredFields()) {
       return;
     }
 
@@ -1022,6 +1244,14 @@ const AccountContent = () => {
           )}
         </div>
 
+        {/* 필수 입력 안내 */}
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm text-slate-700">
+            <span className="text-red-500 font-semibold">*</span> 표시된 항목은
+            필수 입력 값입니다.
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 기본 정보 */}
           <div>
@@ -1031,7 +1261,7 @@ const AccountContent = () => {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  이름 *
+                  이름 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1045,7 +1275,7 @@ const AccountContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  이메일 *
+                  이메일 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
@@ -1057,7 +1287,7 @@ const AccountContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  지역 (시/도) *
+                  지역 (시/도) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1095,7 +1325,7 @@ const AccountContent = () => {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  학교명 *
+                  학교명 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1109,7 +1339,7 @@ const AccountContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  상태 *
+                  상태 <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="status"
@@ -1147,7 +1377,7 @@ const AccountContent = () => {
             </h3>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                생년월일 *
+                생년월일 <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
@@ -1168,66 +1398,125 @@ const AccountContent = () => {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  직군 *
+                  직군 <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="job_field"
-                  value={formData.job_field}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  className={getSelectClassName()}
-                >
-                  <option value="프론트엔드">프론트엔드</option>
-                  <option value="백엔드">백엔드</option>
-                  <option value="풀스택">풀스택</option>
-                  <option value="AI/ML 엔지니어">AI/ML 엔지니어</option>
-                  <option value="UI/UX 디자이너">UI/UX 디자이너</option>
-                  <option value="모바일 개발">모바일 개발</option>
-                  <option value="기획자">기획자</option>
-                  <option value="마케터">마케터</option>
-                </select>
+                {isJobFieldCustom ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={jobFieldInput}
+                      onChange={handleJobFieldInputChange}
+                      disabled={!isEditing}
+                      placeholder="직군을 직접 입력하세요"
+                      className={getInputClassName()}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsJobFieldCustom(false);
+                        setJobFieldInput("");
+                      }}
+                      disabled={!isEditing}
+                      className="text-xs text-blue-600 hover:text-blue-800 disabled:text-slate-400"
+                    >
+                      선택지에서 선택하기
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <select
+                      name="job_field"
+                      value={formData.job_field}
+                      onChange={(e) => handleJobFieldSelect(e.target.value)}
+                      disabled={!isEditing}
+                      className={getSelectClassName()}
+                    >
+                      <option value="">직군을 선택하세요</option>
+                      {jobFieldOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                      <option value="직접 입력">직접 입력</option>
+                    </select>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  스킬 *
+                  스킬 <span className="text-red-500">*</span>
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newSkill}
-                    onChange={(e) => setNewSkill(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    disabled={!isEditing}
-                    placeholder="스킬을 입력하고 Enter를 누르세요"
-                    className="flex-1 rounded-lg border px-3 py-2 focus:outline-none focus:ring-1 disabled:bg-slate-100 disabled:border-slate-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddSkill}
-                    disabled={!isEditing}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                  >
-                    추가
-                  </button>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {skills.map((skill, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800"
+                <div className="space-y-2">
+                  {/* 스킬 선택지 */}
+                  {isEditing && skillOptions.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {skillOptions
+                        .filter((skill) => !skills.includes(skill))
+                        .map((skill) => (
+                          <button
+                            key={skill}
+                            type="button"
+                            onClick={() => handleSkillSelect(skill)}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:border-blue-500 hover:text-blue-700 transition-colors"
+                          >
+                            + {skill}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                  {/* 스킬 입력 */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newSkill}
+                      onChange={(e) => setNewSkill(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      disabled={!isEditing}
+                      placeholder="스킬을 입력하고 Enter를 누르세요"
+                      className="flex-1 rounded-lg border px-3 py-2 focus:outline-none focus:ring-1 disabled:bg-slate-100 disabled:border-slate-200"
+                      list="skill-suggestions"
+                    />
+                    <datalist id="skill-suggestions">
+                      {skillOptions.map((skill) => (
+                        <option key={skill} value={skill} />
+                      ))}
+                    </datalist>
+                    <button
+                      type="button"
+                      onClick={handleAddSkill}
+                      disabled={!isEditing || !newSkill.trim()}
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed"
                     >
-                      {skill}
-                      {isEditing && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSkill(skill)}
-                          className="ml-1 text-blue-600 hover:text-blue-800"
+                      추가
+                    </button>
+                  </div>
+                  {/* 스킬 태그 표시 */}
+                  {skills.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {skills.map((skill, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800"
                         >
-                          ×
-                        </button>
-                      )}
-                    </span>
-                  ))}
+                          {skill}
+                          {isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSkill(skill)}
+                              className="ml-1 text-blue-600 hover:text-blue-800"
+                              title="제거"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      최소 1개 이상의 스킬을 입력해주세요
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1322,173 +1611,42 @@ const AccountContent = () => {
   );
 };
 
-const TeamRegistrationManageContent = () => {
-  const { token } = useAuth();
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const fetchMyCreatedTeams = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const response = await apiGet<{
-        success: boolean;
-        data: { teams: Team[] };
-      }>("/api/teams/my-created-teams", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setTeams(response.data.teams);
-    } catch (error) {
-      console.error("내가 만든 팀 목록 조회 실패:", error);
-      // 401 오류인 경우 로그인 페이지로 리다이렉트
-      if (error instanceof Error && error.message.includes("401")) {
-        window.location.href = "/login";
-        return;
-      }
-      alert("팀 목록을 불러오는데 실패했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  const handleDeleteTeam = async (teamId: string) => {
-    if (!token) return;
-
-    try {
-      await apiDelete(`/api/teams/${teamId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      alert("팀이 성공적으로 삭제되었습니다.");
-      setTeams((prev) => prev.filter((team) => team.id !== teamId));
-    } catch (error) {
-      console.error("팀 삭제 실패:", error);
-      alert("팀 삭제에 실패했습니다.");
-    }
-  };
-
-  useEffect(() => {
-    fetchMyCreatedTeams();
-  }, [fetchMyCreatedTeams]);
-
-  if (loading) {
-    return (
-      <div className="flex-1">
-        <div className="rounded-xl bg-slate-100 p-6">
-          <div className="text-center text-slate-500">
-            팀 정보를 불러오는 중...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 로그인되지 않은 경우
-  if (!token) {
-    return (
-      <div className="flex-1">
-        <div className="rounded-xl bg-slate-100 p-6">
-          <div className="text-center">
-            <div className="rounded-xl border-2 border-dashed border-slate-300 p-8">
-              <div className="text-slate-500">
-                <p className="text-lg">로그인이 필요합니다.</p>
-                <p className="mt-2 text-sm">
-                  팀 등록 관리를 위해 로그인해주세요.
-                </p>
-                <Link
-                  to="/login"
-                  className="mt-4 inline-block rounded bg-slate-900 px-6 py-3 text-white hover:bg-slate-800"
-                >
-                  로그인하기
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (teams.length === 0) {
-    return (
-      <div className="flex-1">
-        <div className="rounded-xl bg-slate-100 p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">팀 등록 관리</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                내가 등록한 팀들을 관리하고 수정할 수 있습니다.
-              </p>
-            </div>
-            <Link
-              to="/mypage/posts"
-              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              새 팀 등록
-            </Link>
-          </div>
-
-          <div className="text-center">
-            <div className="rounded-xl border-2 border-dashed border-slate-300 p-8">
-              <div className="text-slate-500">
-                <p className="text-lg">아직 등록한 팀이 없습니다.</p>
-                <p className="mt-2 text-sm">새 팀을 만들어보세요.</p>
-                <Link
-                  to="/mypage/posts"
-                  className="mt-4 inline-block rounded bg-slate-900 px-6 py-3 text-white hover:bg-slate-800"
-                >
-                  팀 등록하기
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1">
-      <div className="rounded-xl bg-slate-100 p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">팀 등록 관리</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              내가 등록한 {teams.length}개의 팀을 관리하고 수정할 수 있습니다.
-            </p>
-          </div>
-          <Link
-            to="/mypage/posts"
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            새 팀 등록
-          </Link>
-        </div>
-
-        <div className="space-y-4">
-          {teams.map((team) => (
-            <TeamCard key={team.id} team={team} onDelete={handleDeleteTeam} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+type Nudge = {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  team_id: string | null;
+  contest_id: string | null;
+  message: string;
+  status: string;
+  created_at: string;
+  to_user_name: string;
+  to_user_email: string;
+  to_user_region: string;
+  to_user_job_field: string;
+  team_name: string | null;
 };
 
 const TeamManageContent = () => {
   const { user, token } = useAuth();
-  const [teams, setTeams] = useState<TeamWithMembers[]>([]);
+  const navigate = useNavigate();
+  const [myTeams, setMyTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [selectedTeam, setSelectedTeam] = useState<TeamWithMembers | null>(null);
+  const [selectedTeamNudges, setSelectedTeamNudges] = useState<Nudge[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "accepted" | "pending" | "invited">("all");
   const [loading, setLoading] = useState(true);
+  const [showReview, setShowReview] = useState(false);
+  const [reviewState, setReviewState] = useState<
+    Record<string, { rating: number; comment: string }>
+  >({});
 
+  // 내가 속한 팀 목록 조회
   const fetchMyTeams = useCallback(async () => {
     if (!token) return;
 
     try {
-      // 내가 속한 팀 목록 조회
       const teamsResponse = await apiGet<{
         success: boolean;
         data: { teams: Team[] };
@@ -1496,36 +1654,75 @@ const TeamManageContent = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // 각 팀의 상세 정보와 멤버 정보 조회
-      const teamsWithMembers = await Promise.all(
-        teamsResponse.data.teams.map(async (team) => {
-          try {
-            const teamDetailResponse = await apiGet<{
-              success: boolean;
-              data: { team: Team; members: TeamMember[] };
-            }>(`/api/teams/${team.id}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            return teamDetailResponse.data;
-          } catch (error) {
-            console.error(`팀 ${team.id} 정보 조회 실패:`, error);
-            return { team, members: [] };
-          }
-        })
-      );
-
-      setTeams(teamsWithMembers);
+      setMyTeams(teamsResponse.data.teams);
+      if (teamsResponse.data.teams.length > 0 && !selectedTeamId) {
+        setSelectedTeamId(teamsResponse.data.teams[0].id);
+      }
     } catch (error) {
       console.error("내 팀 목록 조회 실패:", error);
       alert("팀 목록을 불러오는데 실패했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, selectedTeamId]);
+
+  // 선택한 팀의 상세 정보 및 멤버 조회
+  const fetchTeamDetail = useCallback(async () => {
+    if (!token || !selectedTeamId) return;
+
+    try {
+      const teamDetailResponse = await apiGet<{
+        success: boolean;
+        data: { team: Team; members: TeamMember[] };
+      }>(`/api/teams/${selectedTeamId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setSelectedTeam({
+        team: teamDetailResponse.data.team,
+        members: teamDetailResponse.data.members,
+      });
+    } catch (error) {
+      console.error("팀 정보 조회 실패:", error);
+      setSelectedTeam(null);
+    }
+  }, [token, selectedTeamId]);
+
+  // 선택한 팀에 대한 초대(찔러보기) 목록 조회
+  const fetchTeamNudges = useCallback(async () => {
+    if (!token || !selectedTeamId) return;
+
+    try {
+      // 보낸 찔러보기 목록 조회
+      const nudgesResponse = await apiGet<{
+        success: boolean;
+        data: { nudges: Nudge[] };
+      }>("/api/nudges/sent?limit=100", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // 선택한 팀에 대한 찔러보기만 필터링
+      const teamNudges = nudgesResponse.data.nudges.filter(
+        (nudge) => nudge.team_id === selectedTeamId
+      );
+
+      setSelectedTeamNudges(teamNudges);
+    } catch (error) {
+      console.error("찔러보기 목록 조회 실패:", error);
+      setSelectedTeamNudges([]);
+    }
+  }, [token, selectedTeamId]);
 
   useEffect(() => {
     fetchMyTeams();
   }, [fetchMyTeams]);
+
+  useEffect(() => {
+    if (selectedTeamId) {
+      fetchTeamDetail();
+      fetchTeamNudges();
+    }
+  }, [selectedTeamId, fetchTeamDetail, fetchTeamNudges]);
 
   if (loading) {
     return (
@@ -1539,7 +1736,90 @@ const TeamManageContent = () => {
     );
   }
 
-  if (teams.length === 0) {
+  // 팀원 삭제
+  const handleRemoveMember = async (memberId: string) => {
+    if (!token || !selectedTeamId) return;
+
+    if (!window.confirm("정말로 이 팀원을 제거하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      await apiDelete(`/api/teams/${selectedTeamId}/members/${memberId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      alert("팀원이 제거되었습니다.");
+      fetchTeamDetail();
+    } catch (error) {
+      console.error("팀원 제거 실패:", error);
+      alert("팀원 제거에 실패했습니다.");
+    }
+  };
+
+  // 지원자 승인/거절
+  const handleApproveMember = async (memberId: string) => {
+    if (!token || !selectedTeamId) return;
+
+    try {
+      await apiPost(
+        `/api/teams/${selectedTeamId}/members/${memberId}`,
+        { status: "accepted" },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert("팀 가입을 승인했습니다.");
+      fetchTeamDetail();
+    } catch (error) {
+      console.error("승인 처리 오류:", error);
+      alert("승인 처리에 실패했습니다.");
+    }
+  };
+
+  const handleRejectMember = async (memberId: string) => {
+    if (!token || !selectedTeamId) return;
+
+    try {
+      await apiPost(
+        `/api/teams/${selectedTeamId}/members/${memberId}`,
+        { status: "rejected" },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert("팀 가입을 거절했습니다.");
+      fetchTeamDetail();
+    } catch (error) {
+      console.error("거절 처리 오류:", error);
+      alert("거절 처리에 실패했습니다.");
+    }
+  };
+
+  // 초대 삭제 (찔러보기 삭제)
+  const handleDeleteNudge = async (nudgeId: string) => {
+    if (!token) return;
+
+    if (!window.confirm("정말로 이 초대를 삭제하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      await apiDelete(`/api/nudges/${nudgeId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      alert("초대가 삭제되었습니다.");
+      fetchTeamNudges();
+    } catch (error) {
+      console.error("초대 삭제 실패:", error);
+      alert("초대 삭제에 실패했습니다.");
+    }
+  };
+
+  if (myTeams.length === 0) {
     return (
       <div className="flex-1">
         <div className="rounded-xl bg-slate-100 p-6">
@@ -1565,6 +1845,10 @@ const TeamManageContent = () => {
     );
   }
 
+  const isLeader = selectedTeam?.team.created_by === user?.id;
+  const acceptedMembers = selectedTeam?.members.filter((m) => m.status === "accepted") || [];
+  const pendingMembers = selectedTeam?.members.filter((m) => m.status === "pending") || [];
+
   return (
     <div className="flex-1">
       <div className="rounded-xl bg-slate-100 p-6">
@@ -1575,19 +1859,524 @@ const TeamManageContent = () => {
           </p>
         </div>
 
-        <div className="space-y-4">
-          {teams.map((teamData) => {
-            const isLeader = teamData.team.created_by === user?.id;
-            return (
-              <TeamManageCard
-                key={teamData.team.id}
-                teamData={teamData}
-                onMemberStatusChange={fetchMyTeams}
-                isLeader={isLeader}
-              />
-            );
-          })}
+        {/* 팀 선택 드롭다운 */}
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            팀 선택
+          </label>
+          <select
+            value={selectedTeamId}
+            onChange={(e) => setSelectedTeamId(e.target.value)}
+            className="w-full max-w-md rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-slate-900"
+          >
+            {myTeams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {/* 사용자 상태 필터 드롭다운 */}
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            사용자 상태 필터
+          </label>
+          <div className="flex items-center gap-4">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as "all" | "accepted" | "pending" | "invited"
+                )
+              }
+              className="w-full max-w-md rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-slate-900"
+            >
+              <option value="all">전체</option>
+              <option value="accepted">소속된 팀원</option>
+              <option value="pending">지원한 사용자</option>
+              <option value="invited">초대된 사용자</option>
+            </select>
+            {isLeader && acceptedMembers.length > 0 && (
+              <button
+                onClick={() => setShowReview(true)}
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                프로젝트 완료
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 필터에 따른 리스트 표시 */}
+        {statusFilter === "all" && (
+          <div className="space-y-6">
+            {/* 소속된 팀원 */}
+            <div>
+              <h3 className="mb-4 text-lg font-bold text-slate-900">
+                소속된 팀원 ({acceptedMembers.length}명)
+              </h3>
+              {acceptedMembers.length > 0 ? (
+                <div className="space-y-3">
+                  {acceptedMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700">
+                          {member.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-slate-900">
+                              {member.name}
+                            </h4>
+                            <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                              {member.role || "팀원"}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            {member.email}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            직군: {member.job_field || "미지정"} · 스킬:{" "}
+                            {member.skills || "없음"}
+                          </div>
+                        </div>
+                      </div>
+                      {isLeader && (
+                        <button
+                          onClick={() => handleRemoveMember(member.id)}
+                          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                  소속된 팀원이 없습니다.
+                </div>
+              )}
+            </div>
+
+            {/* 지원한 사용자 */}
+            {isLeader && (
+              <div>
+                <h3 className="mb-4 text-lg font-bold text-slate-900">
+                  지원한 사용자 ({pendingMembers.length}명)
+                </h3>
+                {pendingMembers.length > 0 ? (
+                  <div className="space-y-3">
+                    {pendingMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 flex-1">
+                            <div
+                              className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-300 transition-colors"
+                              onClick={() =>
+                                navigate(`/profile/${member.user_id}`)
+                              }
+                            >
+                              {member.name.charAt(0)}
+                            </div>
+                            <div className="flex-1">
+                              <Link
+                                to={`/profile/${member.user_id}`}
+                                className="font-semibold text-slate-900 hover:text-blue-600"
+                              >
+                                {member.name}
+                              </Link>
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-sm text-slate-600">
+                                  신청 역할: {member.role || "미지정"}
+                                </span>
+                                <span className="rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                                  대기중
+                                </span>
+                              </div>
+                              <div className="mt-1 text-sm text-slate-600">
+                                {member.email}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                직군: {member.job_field || "미지정"} · 스킬:{" "}
+                                {member.skills || "없음"}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApproveMember(member.id)}
+                              className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                            >
+                              수락
+                            </button>
+                            <button
+                              onClick={() => handleRejectMember(member.id)}
+                              className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                            >
+                              거절
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    새로운 가입 신청이 없습니다.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 초대된 사용자 */}
+            {isLeader && (
+              <div>
+                <h3 className="mb-4 text-lg font-bold text-slate-900">
+                  초대된 사용자 ({selectedTeamNudges.length}명)
+                </h3>
+                {selectedTeamNudges.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedTeamNudges.map((nudge) => (
+                      <div
+                        key={nudge.id}
+                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700">
+                            {nudge.to_user_name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold text-slate-900">
+                                {nudge.to_user_name}
+                              </h4>
+                              <span
+                                className={`rounded-full px-2 py-1 text-xs font-medium ${
+                                  nudge.status === "sent"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : nudge.status === "read"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {nudge.status === "sent"
+                                  ? "대기"
+                                  : nudge.status === "read"
+                                  ? "읽음"
+                                  : nudge.status}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-sm text-slate-600">
+                              {nudge.to_user_email}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {nudge.message}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteNudge(nudge.id)}
+                          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    초대한 사용자가 없습니다.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 필터 적용된 단일 리스트 */}
+        {statusFilter !== "all" && (
+          <div className="space-y-3">
+            {statusFilter === "accepted" && (
+              <>
+                {acceptedMembers.length > 0 ? (
+                  acceptedMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700">
+                          {member.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-slate-900">
+                              {member.name}
+                            </h4>
+                            <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                              {member.role || "팀원"}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            {member.email}
+                          </div>
+                        </div>
+                      </div>
+                      {isLeader && (
+                        <button
+                          onClick={() => handleRemoveMember(member.id)}
+                          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    소속된 팀원이 없습니다.
+                  </div>
+                )}
+              </>
+            )}
+
+            {statusFilter === "pending" && isLeader && (
+              <>
+                {pendingMembers.length > 0 ? (
+                  pendingMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div
+                            className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-300 transition-colors"
+                            onClick={() =>
+                              navigate(`/profile/${member.user_id}`)
+                            }
+                          >
+                            {member.name.charAt(0)}
+                          </div>
+                          <div className="flex-1">
+                            <Link
+                              to={`/profile/${member.user_id}`}
+                              className="font-semibold text-slate-900 hover:text-blue-600"
+                            >
+                              {member.name}
+                            </Link>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="text-sm text-slate-600">
+                                신청 역할: {member.role || "미지정"}
+                              </span>
+                              <span className="rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                                대기중
+                              </span>
+                            </div>
+                            <div className="mt-1 text-sm text-slate-600">
+                              {member.email}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApproveMember(member.id)}
+                            className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                          >
+                            수락
+                          </button>
+                          <button
+                            onClick={() => handleRejectMember(member.id)}
+                            className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                          >
+                            거절
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    새로운 가입 신청이 없습니다.
+                  </div>
+                )}
+              </>
+            )}
+
+            {statusFilter === "invited" && isLeader && (
+              <>
+                {selectedTeamNudges.length > 0 ? (
+                  selectedTeamNudges.map((nudge) => (
+                    <div
+                      key={nudge.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-lg font-semibold text-slate-700">
+                          {nudge.to_user_name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-slate-900">
+                              {nudge.to_user_name}
+                            </h4>
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-medium ${
+                                nudge.status === "sent"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : nudge.status === "read"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {nudge.status === "sent"
+                                ? "대기"
+                                : nudge.status === "read"
+                                ? "읽음"
+                                : nudge.status}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            {nudge.to_user_email}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {nudge.message}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteNudge(nudge.id)}
+                        className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center text-slate-500">
+                    초대한 사용자가 없습니다.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 프로젝트 완료 리뷰 모달 */}
+        {showReview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">
+                  프로젝트 완료 · 팀원 리뷰
+                </h3>
+                <button
+                  onClick={() => setShowReview(false)}
+                  className="text-slate-500 hover:text-slate-700"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="space-y-3 max-h-[60vh] overflow-auto pr-2">
+                {acceptedMembers.map((m) => (
+                  <div key={m.id} className="rounded border border-slate-200 p-3">
+                    <div className="mb-2 text-sm font-medium text-slate-900">
+                      {m.name}
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">
+                          평점(1~5)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={reviewState[m.id]?.rating ?? 5}
+                          onChange={(e) =>
+                            setReviewState((prev) => ({
+                              ...prev,
+                              [m.id]: {
+                                rating: Number(e.target.value),
+                                comment: prev[m.id]?.comment ?? "",
+                              },
+                            }))
+                          }
+                          className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-slate-600 mb-1">
+                          코멘트(선택)
+                        </label>
+                        <input
+                          type="text"
+                          value={reviewState[m.id]?.comment ?? ""}
+                          onChange={(e) =>
+                            setReviewState((prev) => ({
+                              ...prev,
+                              [m.id]: {
+                                rating: prev[m.id]?.rating ?? 5,
+                                comment: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="함께한 소감, 강점/보완점 등을 작성해 주세요"
+                          className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  onClick={() => setShowReview(false)}
+                  className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!token || !selectedTeamId) return;
+                    const payload = {
+                      reviews: acceptedMembers.map((m) => ({
+                        memberId: m.id,
+                        rating: reviewState[m.id]?.rating ?? 5,
+                        comment: reviewState[m.id]?.comment ?? "",
+                      })),
+                    };
+                    try {
+                      await apiPost(`/api/teams/${selectedTeamId}/reviews`, payload, {
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                      });
+                      alert("리뷰가 저장되었습니다. 수고하셨습니다!");
+                      setShowReview(false);
+                      setReviewState({});
+                    } catch (e) {
+                      console.error(e);
+                      alert("리뷰 저장 중 오류가 발생했습니다.");
+                    }
+                  }}
+                  className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1647,10 +2436,10 @@ const TeamCreateForm = () => {
 
       const responseData = response as { success: boolean };
       if (responseData.success) {
-        alert("팀이 성공적으로 등록되었습니다!");
-        navigate("/team");
+        alert("모집 공고가 성공적으로 등록되었습니다!");
+        navigate("/mypage/posts");
       } else {
-        alert("팀 등록에 실패했습니다.");
+        alert("모집 공고 등록에 실패했습니다.");
       }
     } catch (error) {
       console.error("팀 등록 오류:", error);
@@ -1877,7 +2666,8 @@ const MyPage = () => {
   const renderContent = (() => {
     if (pathname === "/mypage/favorites") return <FavoritesContent />;
     if (pathname === "/mypage/profile") return <ProfileForm />;
-    if (pathname === "/mypage/posts") return <TeamCreateForm />;
+    if (pathname === "/mypage/posts") return <RecruitmentPostManageContent />;
+    if (pathname === "/mypage/posts/create") return <RecruitmentPostCreateForm />;
     if (pathname === "/mypage/team-registration")
       return <TeamRegistrationManageContent />;
     if (pathname === "/mypage/manage") return <TeamManageContent />;

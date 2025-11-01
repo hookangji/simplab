@@ -50,29 +50,29 @@ const NudgeButton = ({
       <button
         onClick={() => setShowModal(true)}
         disabled={isLoading}
-        className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 ${className}`}
+        className={`btn btn-animate btn-primary text-sm disabled:opacity-50 ${className}`}
       >
         {isLoading ? "전송 중..." : "💌 찔러보기"}
       </button>
 
       {/* 찔러보기 모달 */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="glass p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-semibold mb-4">💌 찔러보기 보내기</h3>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
                 메시지 (선택사항)
               </label>
               <textarea
                 value={customMessage}
                 onChange={(e) => setCustomMessage(e.target.value)}
                 placeholder={defaultMessage}
-                className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full p-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                 rows={4}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 비워두면 기본 메시지가 전송됩니다.
               </p>
             </div>
@@ -83,14 +83,14 @@ const NudgeButton = ({
                   setShowModal(false);
                   setCustomMessage("");
                 }}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                className="flex-1 btn btn-ghost border border-slate-300"
               >
                 취소
               </button>
               <button
                 onClick={handleNudge}
                 disabled={isLoading}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-md hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50"
+                className="flex-1 btn btn-primary disabled:opacity-50"
               >
                 {isLoading ? "전송 중..." : "보내기"}
               </button>

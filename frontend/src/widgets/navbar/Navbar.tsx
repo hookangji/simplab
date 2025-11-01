@@ -44,7 +44,7 @@ const Navbar = () => {
   }, [user]);
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-slate-200/50 shadow-sm">
+    <header className="sticky top-0 z-50 glass">
       <Container className="flex items-center justify-between py-4">
         <Link
           to="/"
@@ -80,7 +80,7 @@ const Navbar = () => {
             <>
               <Link
                 to="/messenger"
-                className="btn-animate rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-indigo-700 focus-ring relative"
+                className="btn btn-animate btn-primary text-sm relative"
               >
                 💬 메신저
                 {unreadCount > 0 && (
@@ -91,22 +91,19 @@ const Navbar = () => {
               </Link>
               <Link
                 to="/mypage"
-                className="btn-animate rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus-ring"
+                className="btn btn-animate btn-outline text-sm"
               >
                 👤 {user.name}
               </Link>
               <button
                 onClick={logout}
-                className="btn-animate rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-red-300 hover:bg-red-50 hover:text-red-700 focus-ring"
+                className="btn btn-animate btn-ghost text-sm border border-slate-300 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
               >
                 로그아웃
               </button>
             </>
           ) : (
-            <Link
-              to="/login"
-              className="btn-animate rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-indigo-700 focus-ring"
-            >
+            <Link to="/login" className="btn btn-animate btn-primary text-sm">
               로그인
             </Link>
           )}
@@ -144,7 +141,7 @@ const Navbar = () => {
 
       {/* 모바일 메뉴 */}
       {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+        <div className="md:hidden glass">
           <div className="px-6 py-4 space-y-4">
             <Link
               to="/team"
@@ -165,7 +162,7 @@ const Navbar = () => {
               <div className="pt-4 border-t border-slate-200 space-y-3">
                 <Link
                   to="/messenger"
-                  className="block w-full text-center py-3 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-lg relative"
+                  className="block w-full text-center py-3 btn btn-primary relative"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   💬 메신저
@@ -177,7 +174,7 @@ const Navbar = () => {
                 </Link>
                 <Link
                   to="/mypage"
-                  className="block w-full text-center py-3 rounded-lg border border-slate-300 text-slate-700 font-semibold"
+                  className="block w-full text-center py-3 btn btn-outline"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   👤 {user.name}
@@ -187,7 +184,7 @@ const Navbar = () => {
                     logout();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="block w-full text-center py-3 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                  className="block w-full text-center py-3 btn btn-ghost border border-slate-300 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
                 >
                   로그아웃
                 </button>
@@ -196,7 +193,7 @@ const Navbar = () => {
               <div className="pt-4 border-t border-slate-200">
                 <Link
                   to="/login"
-                  className="block w-full text-center py-3 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-lg"
+                  className="block w-full text-center py-3 btn btn-primary"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   로그인

@@ -25,7 +25,7 @@ router.get(
 
     // 수상경력 조회
     const [awards] = await pool.execute(
-      "SELECT id, title, awarded_at as awardedAt, description FROM awards WHERE user_id = ? ORDER BY awarded_at DESC",
+      "SELECT id, title, awarded_at as awardedAt, description, `rank`, participation_type, roles, result_link, result_images FROM awards WHERE user_id = ? ORDER BY awarded_at DESC",
       [id]
     );
 
@@ -97,12 +97,27 @@ router.post(
         userId,
         award.title,
         award.awardedAt,
-        award.description,
+        award.description || null,
+        award.rank || null,
+        award.participation_type || null,
+        award.roles
+          ? Array.isArray(award.roles)
+            ? JSON.stringify(award.roles)
+            : award.roles
+          : null,
+        award.result_link || null,
+        award.result_images
+          ? Array.isArray(award.result_images)
+            ? JSON.stringify(award.result_images)
+            : award.result_images
+          : null,
       ]);
 
-      const placeholders = awards.map(() => "(?, ?, ?, ?)").join(", ");
+      const placeholders = awards
+        .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .join(", ");
       await pool.execute(
-        `INSERT INTO awards (user_id, title, awarded_at, description) VALUES ${placeholders}`,
+        `INSERT INTO awards (user_id, title, awarded_at, description, \`rank\`, participation_type, roles, result_link, result_images) VALUES ${placeholders}`,
         values.flat()
       );
     }
@@ -126,13 +141,49 @@ router.get(
     }
 
     const [awards] = await pool.execute(
-      "SELECT id, title, awarded_at as awardedAt, description FROM awards WHERE user_id = ? ORDER BY awarded_at DESC",
+      "SELECT id, title, awarded_at as awardedAt, description, `rank`, participation_type, roles, result_link, result_images FROM awards WHERE user_id = ? ORDER BY awarded_at DESC",
       [userId]
     );
 
+    // roles와 result_images를 파싱 (JSON 문자열인 경우)
+    const parsedAwards = (awards as any[]).map((award: any) => {
+      let roles = award.roles;
+      let resultImages = award.result_images;
+
+      if (roles) {
+        try {
+          roles = JSON.parse(roles);
+        } catch {
+          // JSON이 아니면 콤마로 구분된 문자열로 처리
+          roles = roles
+            .split(",")
+            .map((r: string) => r.trim())
+            .filter((r: string) => r);
+        }
+      }
+
+      if (resultImages) {
+        try {
+          resultImages = JSON.parse(resultImages);
+        } catch {
+          // JSON이 아니면 콤마로 구분된 문자열로 처리
+          resultImages = resultImages
+            .split(",")
+            .map((img: string) => img.trim())
+            .filter((img: string) => img);
+        }
+      }
+
+      return {
+        ...award,
+        roles: roles || [],
+        result_images: resultImages || [],
+      };
+    });
+
     res.json({
       success: true,
-      data: { awards },
+      data: { awards: parsedAwards },
     });
   })
 );
@@ -212,6 +263,132 @@ router.get(
     res.json({
       success: true,
       data: { traits: groupedTraits },
+    });
+  })
+);
+
+// 포트폴리오 저장
+router.post(
+  "/portfolios",
+  authenticateToken,
+  asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user?.userId;
+    const { portfolios } = req.body;
+
+    if (!userId) {
+      throw createError("인증이 필요합니다", 401);
+    }
+
+    if (!Array.isArray(portfolios)) {
+      throw createError("포트폴리오 데이터가 올바르지 않습니다", 400);
+    }
+
+    // 기존 포트폴리오 삭제
+    await pool.execute("DELETE FROM portfolios WHERE user_id = ?", [userId]);
+
+    // 새로운 포트폴리오 추가
+    if (portfolios.length > 0) {
+      const values = portfolios.map((portfolio: any) => [
+        userId,
+        portfolio.project_name,
+        portfolio.start_date || null,
+        portfolio.end_date || null,
+        portfolio.is_ongoing || false,
+        portfolio.participation_type || null,
+        portfolio.roles
+          ? Array.isArray(portfolio.roles)
+            ? JSON.stringify(portfolio.roles)
+            : portfolio.roles
+          : null,
+        portfolio.contribution_detail || null,
+        portfolio.goal || null,
+        portfolio.problem_definition || null,
+        portfolio.result_summary || null,
+        portfolio.tech_stack
+          ? Array.isArray(portfolio.tech_stack)
+            ? JSON.stringify(portfolio.tech_stack)
+            : portfolio.tech_stack
+          : null,
+        portfolio.images
+          ? Array.isArray(portfolio.images)
+            ? JSON.stringify(portfolio.images)
+            : portfolio.images
+          : null,
+        portfolio.github_link || null,
+        portfolio.figma_link || null,
+        portfolio.other_links
+          ? Array.isArray(portfolio.other_links)
+            ? JSON.stringify(portfolio.other_links)
+            : portfolio.other_links
+          : null,
+        portfolio.certifications
+          ? Array.isArray(portfolio.certifications)
+            ? JSON.stringify(portfolio.certifications)
+            : portfolio.certifications
+          : null,
+      ]);
+
+      const placeholders = portfolios
+        .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .join(", ");
+      await pool.execute(
+        `INSERT INTO portfolios (user_id, project_name, start_date, end_date, is_ongoing, participation_type, roles, contribution_detail, goal, problem_definition, result_summary, tech_stack, images, github_link, figma_link, other_links, certifications) VALUES ${placeholders}`,
+        values.flat()
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "포트폴리오가 성공적으로 저장되었습니다",
+    });
+  })
+);
+
+// 포트폴리오 조회
+router.get(
+  "/portfolios",
+  authenticateToken,
+  asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw createError("인증이 필요합니다", 401);
+    }
+
+    const [portfolios] = await pool.execute(
+      "SELECT id, project_name, start_date, end_date, is_ongoing, participation_type, roles, contribution_detail, goal, problem_definition, result_summary, tech_stack, images, github_link, figma_link, other_links, certifications, created_at, updated_at FROM portfolios WHERE user_id = ? ORDER BY created_at DESC",
+      [userId]
+    );
+
+    // JSON 필드들을 파싱
+    const parsedPortfolios = (portfolios as any[]).map((portfolio: any) => {
+      const parseField = (field: any): any => {
+        if (!field) return [];
+        try {
+          return JSON.parse(field);
+        } catch {
+          return typeof field === "string"
+            ? field
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => s)
+            : [];
+        }
+      };
+
+      return {
+        ...portfolio,
+        roles: parseField(portfolio.roles),
+        tech_stack: parseField(portfolio.tech_stack),
+        images: parseField(portfolio.images),
+        other_links: parseField(portfolio.other_links),
+        certifications: parseField(portfolio.certifications),
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { portfolios: parsedPortfolios },
     });
   })
 );

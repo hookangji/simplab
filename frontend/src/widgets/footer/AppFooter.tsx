@@ -10,7 +10,7 @@ const AppFooter = () => {
             {/* 브랜드 섹션 */}
             <div className="md:col-span-2">
               <div className="mb-6">
-                <h3 className="text-2xl font-bold gradient-text">심프랩</h3>
+                <h3 className="text-2xl font-bold gradient-text">TeamUp</h3>
                 <p className="mt-2 text-slate-300">
                   공모전 팀빌딩을 단숨에 끝내는 올인원 플랫폼
                 </p>
@@ -114,7 +114,7 @@ const AppFooter = () => {
           <div className="mt-12 border-t border-slate-700 pt-8">
             <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
               <div className="text-sm text-slate-400">
-                © {new Date().getFullYear()} 심프랩. All rights reserved.
+                © {new Date().getFullYear()} TeamUp. All rights reserved.
               </div>
               <div className="text-sm text-slate-400">
                 Made with ❤️ for developers

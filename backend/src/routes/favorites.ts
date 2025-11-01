@@ -81,8 +81,21 @@ router.post(
       existingFavorite = Array.isArray(favorites) ? favorites[0] : null;
     }
 
+    let favoriteId: string | null = null;
+
     if (existingFavorite) {
-      throw createError("이미 관심사로 등록되어 있습니다", 400);
+      // 이미 등록된 경우 기존 ID 반환
+      favoriteId = (existingFavorite as any).id;
+      res.json({
+        success: true,
+        message: "이미 관심사로 등록되어 있습니다",
+        data: {
+          favorite: {
+            id: favoriteId,
+          },
+        },
+      });
+      return;
     }
 
     // 관심사 추가
@@ -91,9 +104,26 @@ router.post(
       [userId, contest_id || null, team_id || null]
     );
 
+    // 생성된 관심사 ID 조회
+    const [createdFavorites] = await pool.execute(
+      `SELECT id FROM favorites 
+       WHERE user_id = ? AND ${contest_id ? "contest_id" : "team_id"} = ? 
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId, contest_id || team_id]
+    );
+
+    favoriteId = Array.isArray(createdFavorites) && createdFavorites[0] 
+      ? (createdFavorites[0] as any).id 
+      : null;
+
     res.json({
       success: true,
       message: "관심사에 추가되었습니다",
+      data: {
+        favorite: favoriteId ? {
+          id: favoriteId,
+        } : undefined,
+      },
     });
   })
 );

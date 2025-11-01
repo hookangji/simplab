@@ -27,6 +27,7 @@ const App = () => {
         <Route path="/mypage/favorites" element={<MyPage />} />
         <Route path="/mypage/profile" element={<MyPage />} />
         <Route path="/mypage/posts" element={<MyPage />} />
+        <Route path="/mypage/posts/create" element={<MyPage />} />
         <Route path="/mypage/team-registration" element={<MyPage />} />
         <Route path="/mypage/manage" element={<MyPage />} />
         <Route path="/mypage/team-profile" element={<MyPage />} />

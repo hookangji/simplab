@@ -6,7 +6,8 @@ import ContestFilter, {
 } from "../../widgets/contest/ContestFilter";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { apiGet } from "@/shared/api";
+import { apiGet, apiPost, apiDelete } from "@/shared/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Contest = {
   id: string;
@@ -15,6 +16,8 @@ type Contest = {
   region?: string | null;
   deadline?: string | null;
   image_url?: string | null;
+  is_favorited?: boolean;
+  favorite_id?: string | null;
 };
 
 type ContestResponse = {
@@ -28,7 +31,120 @@ type ContestResponse = {
   };
 };
 
-const ContestCard = ({ c }: { c: Contest }) => {
+const ContestCard = ({
+  c,
+  onFavoriteToggle,
+}: {
+  c: Contest;
+  onFavoriteToggle: (
+    contestId: string,
+    isFavorited: boolean,
+    favoriteId?: string | null
+  ) => Promise<void>;
+}) => {
+  const { user } = useAuth();
+  // 서버에서 받은 초기값을 직접 사용 (상태로 관리하지 않음)
+  const isFavorited = c.is_favorited ?? false;
+  const favoriteId = c.favorite_id ?? null;
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 마감일 계산 함수
+  const getDeadlineDisplay = (
+    deadline: string | null
+  ): { text: string; className: string } => {
+    if (!deadline) {
+      return { text: "마감 미정", className: "text-slate-500" };
+    }
+
+    try {
+      // YYYY-MM-DD 형식의 날짜 문자열을 직접 파싱
+      const dateParts = deadline.split("-");
+      if (dateParts.length !== 3) {
+        console.error("날짜 형식 오류:", deadline);
+        return { text: "마감 미정", className: "text-slate-500" };
+      }
+
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10);
+      const day = parseInt(dateParts[2], 10);
+
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        console.error("날짜 파싱 오류:", deadline, { year, month, day });
+        return { text: "마감 미정", className: "text-slate-500" };
+      }
+
+      const today = new Date();
+      // 오늘 날짜를 자정으로 설정
+      const todayStart = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      // 마감일을 자정으로 설정
+      const deadlineStart = new Date(year, month - 1, day);
+
+      // 유효한 날짜인지 확인
+      if (isNaN(deadlineStart.getTime())) {
+        console.error("유효하지 않은 날짜:", deadline);
+        return { text: "마감 미정", className: "text-slate-500" };
+      }
+
+      // 날짜 차이 계산 (밀리초)
+      const diffTime = deadlineStart.getTime() - todayStart.getTime();
+      // 일수로 변환
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      // 디버깅 로그 (개발 환경에서만)
+      if (process.env.NODE_ENV === "development") {
+        console.log("날짜 계산:", {
+          deadline,
+          deadlineDate: deadlineStart.toISOString().split("T")[0],
+          todayDate: todayStart.toISOString().split("T")[0],
+          diffDays,
+        });
+      }
+
+      if (diffDays < 0) {
+        // 마감됨
+        return { text: "마감됨", className: "text-red-600 font-medium" };
+      } else if (diffDays === 0) {
+        // 오늘이 마감일
+        return { text: "D-Day", className: "text-orange-600 font-medium" };
+      } else {
+        // 남은 일수
+        return { text: `D-${diffDays}`, className: "text-slate-700" };
+      }
+    } catch (error) {
+      console.error("날짜 계산 오류:", error, deadline);
+      return { text: "마감 미정", className: "text-slate-500" };
+    }
+  };
+
+  const deadlineDisplay = getDeadlineDisplay(c.deadline);
+
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
+
+    if (isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await onFavoriteToggle(c.id, isFavorited, favoriteId);
+      // 상태는 부모 컴포넌트에서 업데이트되고, useEffect를 통해 동기화됨
+    } catch (error) {
+      console.error("관심 등록/해제 실패:", error);
+      alert("관심 등록/해제에 실패했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Link
       to={`/contests/${c.id}`}
@@ -54,17 +170,20 @@ const ContestCard = ({ c }: { c: Contest }) => {
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm">
-          <div className="text-slate-700">
-            {c.deadline
-              ? `마감 ${new Date(c.deadline).toLocaleDateString()}`
-              : "마감 미정"}
+          <div className={deadlineDisplay.className}>
+            {deadlineDisplay.text}
           </div>
           <button
             type="button"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-800 hover:border-slate-400"
-            onClick={(e) => e.preventDefault()}
+            disabled={isLoading}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              isFavorited
+                ? "border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                : "border-slate-300 text-slate-800 hover:border-slate-400"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            onClick={handleFavoriteClick}
           >
-            저장
+            {isFavorited ? "저장됨" : "저장"}
           </button>
         </div>
       </div>
@@ -73,6 +192,7 @@ const ContestCard = ({ c }: { c: Contest }) => {
 };
 
 const ContestListPage = () => {
+  const { user } = useAuth();
   const [contests, setContests] = useState<Contest[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -85,6 +205,52 @@ const ContestListPage = () => {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const lastContestElementRef = useRef<HTMLDivElement | null>(null);
   const isLoadingRef = useRef(false);
+
+  const handleFavoriteToggle = useCallback(
+    async (
+      contestId: string,
+      isFavorited: boolean,
+      favoriteId?: string | null
+    ) => {
+      if (!user) {
+        throw new Error("로그인이 필요합니다");
+      }
+
+      if (isFavorited && favoriteId) {
+        // 관심 해제
+        await apiDelete(`/api/favorites/${favoriteId}`);
+        // 로컬 상태 업데이트
+        setContests((prev) =>
+          prev.map((contest) =>
+            contest.id === contestId
+              ? { ...contest, is_favorited: false, favorite_id: null }
+              : contest
+          )
+        );
+      } else {
+        // 관심 추가
+        const response = await apiPost<{
+          success: boolean;
+          data: { favorite: { id: string } };
+        }>("/api/favorites", { contest_id: contestId });
+
+        const newFavoriteId = response.data.favorite?.id;
+        // 로컬 상태 업데이트
+        setContests((prev) =>
+          prev.map((contest) =>
+            contest.id === contestId
+              ? {
+                  ...contest,
+                  is_favorited: true,
+                  favorite_id: newFavoriteId || null,
+                }
+              : contest
+          )
+        );
+      }
+    },
+    [user]
+  );
 
   const buildQueryString = useCallback(
     (pageNum: number, currentFilters: FilterOptions) => {
@@ -121,7 +287,15 @@ const ContestListPage = () => {
         const response = await apiGet<ContestResponse>(
           `/api/contests?${queryString}`
         );
-        const newContests = response.data.contests;
+        const newContests = response.data.contests.map((contest: Contest) => ({
+          ...contest,
+          // deadline이 Date 객체인 경우 문자열로 변환
+          deadline: contest.deadline
+            ? typeof contest.deadline === "string"
+              ? contest.deadline
+              : new Date(contest.deadline as any).toISOString().split("T")[0]
+            : null,
+        }));
 
         if (append) {
           setContests((prev) => [...prev, ...newContests]);
@@ -138,7 +312,7 @@ const ContestListPage = () => {
         isLoadingRef.current = false;
       }
     },
-    [filters, buildQueryString]
+    [filters, buildQueryString, user]
   );
 
   useEffect(() => {
@@ -232,11 +406,20 @@ const ContestListPage = () => {
                 if (contests.length === index + 1) {
                   return (
                     <div key={c.id} ref={lastContestElementCallback}>
-                      <ContestCard c={c} />
+                      <ContestCard
+                        c={c}
+                        onFavoriteToggle={handleFavoriteToggle}
+                      />
                     </div>
                   );
                 }
-                return <ContestCard key={c.id} c={c} />;
+                return (
+                  <ContestCard
+                    key={c.id}
+                    c={c}
+                    onFavoriteToggle={handleFavoriteToggle}
+                  />
+                );
               })}
             </div>
 

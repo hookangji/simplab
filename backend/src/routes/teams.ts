@@ -4,6 +4,7 @@ import { validatePagination } from "../utils/validation";
 import { asyncHandler, createError } from "../middleware/error";
 import { authenticateToken } from "../middleware/auth";
 import { Team, CreateTeamData, TeamMember } from "../types";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -136,7 +137,7 @@ router.get(
     const total = (countResult as any[])[0].total;
 
     // 팀 목록 조회
-    const teamsQuery = `SELECT DISTINCT t.id, t.name, t.region, t.area, t.description, t.purpose, t.seeking_members, t.current_team_composition, t.ideal_candidate, t.collaboration_style, t.max_members, t.current_members, t.deadline, t.project_title, t.image_url, t.created_by, t.created_at, t.updated_at 
+    const teamsQuery = `SELECT DISTINCT t.id, t.name, t.region, t.area, t.description, t.purpose, t.seeking_members, t.current_team_composition, t.ideal_candidate, t.collaboration_style, t.collaboration_tools, t.max_members, t.current_members, t.deadline, t.project_title, t.image_url, t.created_by, t.created_at, t.updated_at 
      FROM teams t ${traitJoinClause} 
      ${whereClause} ${traitWhereClause} 
      ORDER BY t.created_at DESC 
@@ -219,7 +220,7 @@ router.get(
 
     // 팀 정보 조회
     const [teams] = await pool.execute(
-      "SELECT id, name, region, area, description, purpose, seeking_members, current_team_composition, ideal_candidate, collaboration_style, max_members, current_members, deadline, project_title, image_url, created_by, created_at, updated_at FROM teams WHERE id = ?",
+      "SELECT id, name, region, area, description, purpose, seeking_members, current_team_composition, ideal_candidate, collaboration_style, collaboration_tools, max_members, current_members, deadline, project_title, image_url, area_keywords, progress_stage, meeting_schedule, available_time_slots, created_by, created_at, updated_at FROM teams WHERE id = ?",
       [id]
     );
 
@@ -239,11 +240,41 @@ router.get(
       [id]
     );
 
+    // 팀이 연관된 공모전 조회
+    const [teamContests] = await pool.execute(
+      `SELECT c.id, c.title, c.topic, c.region, c.deadline, c.description, c.features, c.image_url
+       FROM team_contests tc
+       JOIN contests c ON tc.contest_id = c.id
+       WHERE tc.team_id = ?
+       ORDER BY c.deadline IS NULL, c.deadline ASC`,
+      [id]
+    );
+
+    // 팀 프로젝트 조회
+    const [teamProjects] = await pool.execute(
+      `SELECT id, team_id, project_name, start_date, end_date, is_ongoing, summary, tech_stack, result_link, performance_indicators, images, created_at, updated_at
+       FROM team_projects
+       WHERE team_id = ?
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
+    // JSON 파싱
+    const projects = Array.isArray(teamProjects)
+      ? teamProjects.map((p: any) => ({
+          ...p,
+          tech_stack: p.tech_stack ? JSON.parse(p.tech_stack) : [],
+          images: p.images ? JSON.parse(p.images) : [],
+        }))
+      : [];
+
     res.json({
       success: true,
       data: {
         team,
         members: members || [],
+        contests: teamContests || [],
+        projects: projects || [],
       },
     });
   })
@@ -268,6 +299,8 @@ router.post(
       max_members = 6,
       deadline,
       project_title,
+      collaboration_style,
+      collaboration_tools,
     }: CreateTeamData = req.body;
 
     if (!name) {
@@ -275,8 +308,8 @@ router.post(
     }
 
     const [result] = await pool.execute(
-      `INSERT INTO teams (name, region, area, description, max_members, current_members, deadline, project_title, created_by) 
-     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      `INSERT INTO teams (name, region, area, description, max_members, current_members, deadline, project_title, collaboration_style, collaboration_tools, created_by) 
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
       [
         name,
         region,
@@ -285,6 +318,8 @@ router.post(
         max_members,
         deadline,
         project_title,
+        collaboration_style,
+        collaboration_tools,
         userId,
       ]
     );
@@ -334,7 +369,18 @@ router.put(
       max_members,
       deadline,
       project_title,
-    }: CreateTeamData = req.body;
+      collaboration_style,
+      collaboration_tools,
+      area_keywords,
+      progress_stage,
+      meeting_schedule,
+      available_time_slots,
+    }: CreateTeamData & {
+      area_keywords?: string;
+      progress_stage?: string;
+      meeting_schedule?: string;
+      available_time_slots?: string;
+    } = req.body;
 
     // 팀 존재 확인 및 권한 확인
     const [existingTeams] = await pool.execute(
@@ -354,25 +400,32 @@ router.put(
       throw createError("팀 수정 권한이 없습니다", 403);
     }
 
+    // undefined 값을 null로 변환
     await pool.execute(
       `UPDATE teams 
-     SET name = ?, region = ?, area = ?, description = ?, max_members = ?, deadline = ?, project_title = ?, updated_at = CURRENT_TIMESTAMP 
+     SET name = ?, region = ?, area = ?, description = ?, max_members = ?, deadline = ?, project_title = ?, collaboration_style = ?, collaboration_tools = ?, area_keywords = ?, progress_stage = ?, meeting_schedule = ?, available_time_slots = ?, updated_at = CURRENT_TIMESTAMP 
      WHERE id = ?`,
       [
-        name,
-        region,
-        area,
-        description,
-        max_members,
-        deadline,
-        project_title,
+        name ?? null,
+        region ?? null,
+        area ?? null,
+        description ?? null,
+        max_members ?? null,
+        deadline ?? null,
+        project_title ?? null,
+        collaboration_style ?? null,
+        collaboration_tools ?? null,
+        area_keywords ?? null,
+        progress_stage ?? null,
+        meeting_schedule ?? null,
+        available_time_slots ?? null,
         id,
       ]
     );
 
     // 수정된 팀 정보 조회
     const [teams] = await pool.execute(
-      "SELECT id, name, region, area, description, max_members, current_members, deadline, project_title, image_url, created_by, created_at, updated_at FROM teams WHERE id = ?",
+      "SELECT id, name, region, area, description, max_members, current_members, deadline, project_title, image_url, area_keywords, progress_stage, meeting_schedule, available_time_slots, created_by, created_at, updated_at FROM teams WHERE id = ?",
       [id]
     );
 
@@ -555,6 +608,68 @@ router.put(
   })
 );
 
+// 팀원 삭제
+router.delete(
+  "/:id/members/:memberId",
+  authenticateToken,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, memberId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw createError("로그인이 필요합니다", 401);
+    }
+
+    // 팀 권한 확인
+    const [existingTeams] = await pool.execute(
+      "SELECT id, created_by FROM teams WHERE id = ?",
+      [id]
+    );
+
+    const existingTeam = Array.isArray(existingTeams)
+      ? (existingTeams[0] as any)
+      : null;
+
+    if (!existingTeam) {
+      throw createError("팀을 찾을 수 없습니다", 404);
+    }
+
+    if (existingTeam.created_by !== userId) {
+      throw createError("팀 관리 권한이 없습니다", 403);
+    }
+
+    // 멤버 존재 확인
+    const [existingMembers] = await pool.execute(
+      "SELECT id, status FROM team_members WHERE id = ? AND team_id = ?",
+      [memberId, id]
+    );
+
+    const existingMember = Array.isArray(existingMembers)
+      ? (existingMembers[0] as any)
+      : null;
+
+    if (!existingMember) {
+      throw createError("멤버를 찾을 수 없습니다", 404);
+    }
+
+    // 팀원 삭제 (accepted 상태인 경우에만 current_members 감소)
+    if (existingMember.status === "accepted") {
+      await pool.execute(
+        "UPDATE teams SET current_members = GREATEST(0, current_members - 1) WHERE id = ?",
+        [id]
+      );
+    }
+
+    // 멤버 삭제
+    await pool.execute("DELETE FROM team_members WHERE id = ?", [memberId]);
+
+    res.json({
+      success: true,
+      message: "팀원이 제거되었습니다",
+    });
+  })
+);
+
 export default router;
 
 // 팀 추천: 가중치 기반 스코어링 모델
@@ -574,7 +689,7 @@ router.post(
 
     // 팀 존재 확인 및 현재 팀 멤버 조회
     const [teams] = await pool.execute(
-      "SELECT id, name, region, area, description, purpose, seeking_members, current_team_composition, ideal_candidate, collaboration_style, max_members, current_members, deadline, project_title, image_url, created_by, created_at, updated_at FROM teams WHERE id = ?",
+      "SELECT id, name, region, area, description, purpose, seeking_members, current_team_composition, ideal_candidate, collaboration_style, collaboration_tools, max_members, current_members, deadline, project_title, image_url, created_by, created_at, updated_at FROM teams WHERE id = ?",
       [id]
     );
     const team = Array.isArray(teams) ? (teams[0] as any) : null;
@@ -842,6 +957,282 @@ router.post(
         },
         recommendations,
       },
+    });
+  })
+);
+
+// 팀 프로젝트 목록 조회
+router.get(
+  "/:id/projects",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const [projects] = await pool.execute(
+      `SELECT id, team_id, project_name, start_date, end_date, is_ongoing, summary, tech_stack, result_link, performance_indicators, images, created_at, updated_at 
+       FROM team_projects 
+       WHERE team_id = ? 
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
+    // tech_stack, images를 JSON 파싱
+    const parsedProjects = Array.isArray(projects)
+      ? (projects as any[]).map((project) => {
+          try {
+            return {
+              ...project,
+              tech_stack: project.tech_stack ? JSON.parse(project.tech_stack) : [],
+              images: project.images ? JSON.parse(project.images) : [],
+            };
+          } catch {
+            return {
+              ...project,
+              tech_stack: project.tech_stack ? project.tech_stack.split(",") : [],
+              images: project.images ? project.images.split(",") : [],
+            };
+          }
+        })
+      : [];
+
+    res.json({
+      success: true,
+      data: { projects: parsedProjects },
+    });
+  })
+);
+
+// 팀 프로젝트 생성
+router.post(
+  "/:id/projects",
+  authenticateToken,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw createError("로그인이 필요합니다", 401);
+    }
+
+    // 팀 권한 확인
+    const [existingTeams] = await pool.execute(
+      "SELECT id, created_by FROM teams WHERE id = ?",
+      [id]
+    );
+
+    const existingTeam = Array.isArray(existingTeams)
+      ? (existingTeams[0] as any)
+      : null;
+
+    if (!existingTeam) {
+      throw createError("팀을 찾을 수 없습니다", 404);
+    }
+
+    if (existingTeam.created_by !== userId) {
+      throw createError("프로젝트 등록 권한이 없습니다", 403);
+    }
+
+    const {
+      project_name,
+      start_date,
+      end_date,
+      is_ongoing,
+      summary,
+      tech_stack,
+      result_link,
+      performance_indicators,
+      images,
+    } = req.body;
+
+    if (!project_name) {
+      throw createError("프로젝트명은 필수입니다", 400);
+    }
+
+    const techStackStr = Array.isArray(tech_stack)
+      ? JSON.stringify(tech_stack)
+      : tech_stack || null;
+    const imagesStr = Array.isArray(images)
+      ? JSON.stringify(images)
+      : images || null;
+
+    // UUID 생성
+    const projectId = randomUUID();
+
+    await pool.execute(
+      `INSERT INTO team_projects (id, team_id, project_name, start_date, end_date, is_ongoing, summary, tech_stack, result_link, performance_indicators, images) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        projectId,
+        id,
+        project_name,
+        start_date,
+        end_date,
+        is_ongoing || false,
+        summary,
+        techStackStr,
+        result_link,
+        performance_indicators,
+        imagesStr,
+      ]
+    );
+
+    // 생성된 프로젝트 조회
+    const [projects] = await pool.execute(
+      "SELECT id, team_id, project_name, start_date, end_date, is_ongoing, summary, tech_stack, result_link, performance_indicators, images, created_at, updated_at FROM team_projects WHERE id = ?",
+      [projectId]
+    );
+
+    const project = Array.isArray(projects) ? (projects[0] as any) : null;
+
+    if (project) {
+      try {
+        project.tech_stack = project.tech_stack ? JSON.parse(project.tech_stack) : [];
+        project.images = project.images ? JSON.parse(project.images) : [];
+      } catch {
+        project.tech_stack = project.tech_stack ? project.tech_stack.split(",") : [];
+        project.images = project.images ? project.images.split(",") : [];
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { project },
+      message: "프로젝트가 생성되었습니다",
+    });
+  })
+);
+
+// 팀 프로젝트 수정
+router.put(
+  "/:id/projects/:projectId",
+  authenticateToken,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, projectId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw createError("로그인이 필요합니다", 401);
+    }
+
+    // 팀 권한 확인
+    const [existingTeams] = await pool.execute(
+      "SELECT id, created_by FROM teams WHERE id = ?",
+      [id]
+    );
+
+    const existingTeam = Array.isArray(existingTeams)
+      ? (existingTeams[0] as any)
+      : null;
+
+    if (!existingTeam) {
+      throw createError("팀을 찾을 수 없습니다", 404);
+    }
+
+    if (existingTeam.created_by !== userId) {
+      throw createError("프로젝트 수정 권한이 없습니다", 403);
+    }
+
+    const {
+      project_name,
+      start_date,
+      end_date,
+      is_ongoing,
+      summary,
+      tech_stack,
+      result_link,
+      performance_indicators,
+      images,
+    } = req.body;
+
+    const techStackStr = Array.isArray(tech_stack)
+      ? JSON.stringify(tech_stack)
+      : tech_stack || null;
+    const imagesStr = Array.isArray(images)
+      ? JSON.stringify(images)
+      : images || null;
+
+    await pool.execute(
+      `UPDATE team_projects 
+       SET project_name = ?, start_date = ?, end_date = ?, is_ongoing = ?, summary = ?, tech_stack = ?, result_link = ?, performance_indicators = ?, images = ?, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ? AND team_id = ?`,
+      [
+        project_name,
+        start_date,
+        end_date,
+        is_ongoing,
+        summary,
+        techStackStr,
+        result_link,
+        performance_indicators,
+        imagesStr,
+        projectId,
+        id,
+      ]
+    );
+
+    // 수정된 프로젝트 조회
+    const [projects] = await pool.execute(
+      "SELECT id, team_id, project_name, start_date, end_date, is_ongoing, summary, tech_stack, result_link, performance_indicators, images, created_at, updated_at FROM team_projects WHERE id = ?",
+      [projectId]
+    );
+
+    const project = Array.isArray(projects) ? (projects[0] as any) : null;
+
+    if (project) {
+      try {
+        project.tech_stack = project.tech_stack ? JSON.parse(project.tech_stack) : [];
+        project.images = project.images ? JSON.parse(project.images) : [];
+      } catch {
+        project.tech_stack = project.tech_stack ? project.tech_stack.split(",") : [];
+        project.images = project.images ? project.images.split(",") : [];
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { project },
+      message: "프로젝트가 수정되었습니다",
+    });
+  })
+);
+
+// 팀 프로젝트 삭제
+router.delete(
+  "/:id/projects/:projectId",
+  authenticateToken,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id, projectId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw createError("로그인이 필요합니다", 401);
+    }
+
+    // 팀 권한 확인
+    const [existingTeams] = await pool.execute(
+      "SELECT id, created_by FROM teams WHERE id = ?",
+      [id]
+    );
+
+    const existingTeam = Array.isArray(existingTeams)
+      ? (existingTeams[0] as any)
+      : null;
+
+    if (!existingTeam) {
+      throw createError("팀을 찾을 수 없습니다", 404);
+    }
+
+    if (existingTeam.created_by !== userId) {
+      throw createError("프로젝트 삭제 권한이 없습니다", 403);
+    }
+
+    await pool.execute("DELETE FROM team_projects WHERE id = ? AND team_id = ?", [
+      projectId,
+      id,
+    ]);
+
+    res.json({
+      success: true,
+      message: "프로젝트가 삭제되었습니다",
     });
   })
 );

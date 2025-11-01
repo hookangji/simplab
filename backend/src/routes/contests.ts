@@ -50,16 +50,76 @@ router.get(
     const [countResult] = await pool.execute(countQuery, params);
     const total = (countResult as any[])[0].total;
 
-    // 공모전 목록 조회
-    const contestsQuery = `SELECT id, title, topic, region, deadline, description, host, format, features, required_skills, team_composition, image_url, created_at, updated_at 
-     FROM contests ${whereClause} 
-     ORDER BY created_at DESC 
-     LIMIT ${limitNum} OFFSET ${offset}`;
-    const [contests] = await pool.execute(contestsQuery, params);
+    // 공모전 목록 조회 (관심 등록 여부 포함)
+    const userId = req.user?.userId;
+
+    let contestsQuery: string;
+    let queryParams: any[];
+
+    if (userId) {
+      // 로그인된 사용자: 관심 등록 여부 포함
+      contestsQuery = `SELECT c.id, c.title, c.topic, c.region, c.deadline, c.description, c.host, c.format, c.features, c.required_skills, c.team_composition, c.image_url, c.created_at, c.updated_at,
+       f.id as favorite_id
+       FROM contests c 
+       LEFT JOIN favorites f ON c.id = f.contest_id AND f.user_id = ?
+       ${whereClause} 
+       ORDER BY c.created_at DESC 
+       LIMIT ${limitNum} OFFSET ${offset}`;
+      queryParams = [userId, ...params];
+    } else {
+      // 로그인하지 않은 사용자: 관심 등록 여부 없이 조회
+      contestsQuery = `SELECT c.id, c.title, c.topic, c.region, c.deadline, c.description, c.host, c.format, c.features, c.required_skills, c.team_composition, c.image_url, c.created_at, c.updated_at,
+       NULL as favorite_id
+       FROM contests c 
+       ${whereClause} 
+       ORDER BY c.created_at DESC 
+       LIMIT ${limitNum} OFFSET ${offset}`;
+      queryParams = params;
+    }
+
+    const [contests] = await pool.execute(contestsQuery, queryParams);
+
+    // 관심 등록 여부를 포함하여 포맷팅
+    const formattedContests = (contests as any[]).map((contest: any) => {
+      let deadlineStr: string | null = null;
+
+      if (contest.deadline) {
+        if (contest.deadline instanceof Date) {
+          // Date 객체인 경우
+          deadlineStr = contest.deadline.toISOString().split("T")[0];
+        } else if (typeof contest.deadline === "string") {
+          // 문자열인 경우 (이미 YYYY-MM-DD 형식이거나 다른 형식일 수 있음)
+          const dateMatch = contest.deadline.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (dateMatch) {
+            deadlineStr = dateMatch[0]; // YYYY-MM-DD 부분만 추출
+          } else {
+            // 다른 형식의 문자열인 경우 Date로 파싱 시도
+            const parsedDate = new Date(contest.deadline);
+            if (!isNaN(parsedDate.getTime())) {
+              deadlineStr = parsedDate.toISOString().split("T")[0];
+            }
+          }
+        } else {
+          // 기타 타입인 경우 문자열로 변환 후 처리
+          const dateStr = String(contest.deadline);
+          const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (dateMatch) {
+            deadlineStr = dateMatch[0];
+          }
+        }
+      }
+
+      return {
+        ...contest,
+        deadline: deadlineStr,
+        is_favorited: !!contest.favorite_id,
+        favorite_id: contest.favorite_id || null,
+      };
+    });
 
     res.json({
       success: true,
-      data: { contests },
+      data: { contests: formattedContests },
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -75,17 +135,67 @@ router.get(
   "/:id",
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
+    const userId = req.user?.userId;
 
-    const [contests] = await pool.execute(
-      "SELECT id, title, topic, region, deadline, description, host, format, features, required_skills, team_composition, image_url, created_at, updated_at FROM contests WHERE id = ?",
-      [id]
-    );
+    let contestQuery: string;
+    let queryParams: any[];
+
+    if (userId) {
+      // 로그인된 사용자: 관심 등록 여부 포함
+      contestQuery = `SELECT c.id, c.title, c.topic, c.region, c.deadline, c.description, c.host, c.format, c.features, c.required_skills, c.team_composition, c.image_url, c.created_at, c.updated_at,
+       f.id as favorite_id
+       FROM contests c 
+       LEFT JOIN favorites f ON c.id = f.contest_id AND f.user_id = ?
+       WHERE c.id = ?`;
+      queryParams = [userId, id];
+    } else {
+      // 로그인하지 않은 사용자: 관심 등록 여부 없이 조회
+      contestQuery = `SELECT c.id, c.title, c.topic, c.region, c.deadline, c.description, c.host, c.format, c.features, c.required_skills, c.team_composition, c.image_url, c.created_at, c.updated_at,
+       NULL as favorite_id
+       FROM contests c 
+       WHERE c.id = ?`;
+      queryParams = [id];
+    }
+
+    const [contests] = await pool.execute(contestQuery, queryParams);
 
     const contest = Array.isArray(contests) ? (contests[0] as any) : null;
 
     if (!contest) {
       throw createError("공모전을 찾을 수 없습니다", 404);
     }
+
+    // 관심 등록 여부를 포함하여 포맷팅
+    let deadlineStr: string | null = null;
+
+    if (contest.deadline) {
+      if (contest.deadline instanceof Date) {
+        deadlineStr = contest.deadline.toISOString().split("T")[0];
+      } else if (typeof contest.deadline === "string") {
+        const dateMatch = contest.deadline.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+          deadlineStr = dateMatch[0];
+        } else {
+          const parsedDate = new Date(contest.deadline);
+          if (!isNaN(parsedDate.getTime())) {
+            deadlineStr = parsedDate.toISOString().split("T")[0];
+          }
+        }
+      } else {
+        const dateStr = String(contest.deadline);
+        const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+          deadlineStr = dateMatch[0];
+        }
+      }
+    }
+
+    const formattedContest = {
+      ...contest,
+      deadline: deadlineStr,
+      is_favorited: !!contest.favorite_id,
+      favorite_id: contest.favorite_id || null,
+    };
 
     // 공모전에 참가하는 팀 조회
     const [teams] = await pool.execute(
@@ -117,7 +227,7 @@ router.get(
     res.json({
       success: true,
       data: {
-        contest,
+        contest: formattedContest,
         teams: teams || [],
         members: members || [],
       },
